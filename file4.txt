@@ -1,0 +1,28 @@
+Container Image Generation and Optimization
+
+Act as a Senior Container Platform Engineer.
+
+Based on the repository contents:
+
+1. Determine the optimal containerization pattern.
+2. Identify application startup requirements.
+3. Determine required JVM settings.
+4. Detect unnecessary dependencies.
+5. Recommend image hardening measures.
+
+Generate:
+
+- Production-ready Dockerfile
+- Multi-stage build approach
+- Non-root container configuration
+- OpenShift-compatible security configuration
+- Health checks
+- Liveness probe
+- Readiness probe
+- Startup probe
+
+Also provide:
+- Security concerns
+- Image size optimization opportunities
+- Build-time versus runtime dependencies
+- Recommended base image
