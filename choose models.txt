@@ -1,0 +1,18 @@
+| Activity                              | Best Model      | Why                                                                     |
+| ------------------------------------- | --------------- | ----------------------------------------------------------------------- |
+| Repository Discovery                  | GPT-5.5         | Best at understanding large codebases and creating structured summaries |
+| Containerization Readiness Assessment | Claude Opus 4.7 | Excellent architectural reasoning and long-form analysis                |
+| OpenShift Readiness Review            | Claude Opus 4.7 | Strongest at identifying hidden risks and dependencies                  |
+| Tomcat → Container Migration          | GPT-5.5         | Produces practical Docker/OpenShift recommendations                     |
+| WebSphere → Liberty Migration         | Claude Opus 4.7 | Better at legacy middleware analysis                                    |
+| WebLogic → OpenShift Migration        | Claude Opus 4.7 | Better architectural depth                                              |
+| JDK 8/11 → JDK 17/21 Upgrade          | GPT-5.3 Codex   | Excellent code-level upgrade analysis                                   |
+| Spring Boot 2.x → 3.x Upgrade         | GPT-5.3 Codex   | Strong dependency and code remediation guidance                         |
+| pom.xml Analysis                      | GPT-5.3 Codex   | Best code/dependency understanding                                      |
+| Security & Vulnerability Analysis     | Gemini 2.5 Pro  | Excellent large-context scanning                                        |
+| Architecture Blueprint Generation     | Claude Opus 4.7 | Produces consulting-quality documentation                               |
+| Executive Summary                     | Claude Opus 4.7 | Better communication style for architects and executives                |
+| Dockerfile Generation                 | GPT-5.3 Codex   | More accurate implementation details                                    |
+| Helm Chart Creation                   | GPT-5.3 Codex   | Strong Kubernetes/OpenShift YAML generation                             |
+| CI/CD Pipeline Recommendations        | GPT-5.5         | Better DevOps reasoning                                                 |
+| Migration Effort Estimation           | Claude Opus 4.7 | Better complexity assessment                                            |
