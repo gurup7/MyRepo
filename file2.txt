@@ -1,0 +1,36 @@
+Deep Java Application Server Discovery
+Act as an Enterprise Java Modernization Specialist.
+
+Scan the repository and identify all Tomcat, WebLogic, and WebSphere dependencies.
+
+For each application:
+
+1. Locate deployment descriptors:
+   - web.xml
+   - weblogic.xml
+   - ibm-web-ext.xml
+   - ibm-application-bnd.xml
+   - server.xml
+   - context.xml
+
+2. Detect vendor lock-in features:
+   - JNDI resources
+   - JMS configurations
+   - EJBs
+   - Shared libraries
+   - Proprietary APIs
+
+3. Classify migration complexity:
+   - Lift-and-shift
+   - Replatform
+   - Refactor required
+
+4. Recommend target runtime:
+   - OpenJDK
+   - Tomcat
+   - JBoss EAP
+   - WebSphere Liberty
+   - Open Liberty
+
+Output a table containing:
+Application | Current Server | Packaging | Vendor Dependencies | Migration Complexity | Recommended Runtime
