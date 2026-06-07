@@ -1,0 +1,33 @@
+OpenShift Deployment Readiness Analysis
+
+Act as a Red Hat OpenShift Platform Engineer.
+
+Analyze this repository and determine everything required to deploy it on OpenShift.
+
+Check:
+
+1. Build requirements
+2. Runtime requirements
+3. Environment variables
+4. Secrets
+5. Certificates
+6. Storage requirements
+7. Network dependencies
+8. External integrations
+
+Generate:
+
+- Required Dockerfile strategy
+- BuildConfig recommendation
+- Deployment strategy
+- Service definition
+- Route requirements
+- ConfigMaps
+- Secrets
+- PVC requirements
+- Resource requests and limits
+
+Highlight all blockers preventing successful OpenShift deployment.
+
+Rank each blocker by:
+Critical | High | Medium | Low
