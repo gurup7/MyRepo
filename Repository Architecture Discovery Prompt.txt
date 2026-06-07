@@ -1,0 +1,101 @@
+Act as a Senior Enterprise Application Architect and OpenShift Modernization Consultant.
+
+Analyze the entire repository/workspace and build a comprehensive understanding of the application.
+
+Do not focus only on source code. Analyze:
+
+- Project structure
+- pom.xml / build files
+- Configuration files
+- Application properties
+- YAML files
+- Deployment descriptors
+- Controllers
+- Services
+- DAO/Repository layers
+- Integration components
+- Security configuration
+- Messaging components
+- Database connectivity
+- External APIs
+- Existing container artifacts
+- Documentation files
+
+Provide the following:
+
+### 1. Application Overview
+- Business purpose of the application
+- Major capabilities
+- Key modules and components
+- High-level architecture style
+  (Monolith, Layered, Modular Monolith, Microservices, Event Driven, etc.)
+
+### 2. Runtime Architecture
+Identify:
+- Entry points
+- UI components
+- REST APIs
+- Service layer
+- Business layer
+- Data access layer
+- Database interactions
+- Batch jobs
+- Scheduled jobs
+- Messaging integrations
+- External systems
+
+### 3. End-to-End Application Flow
+Describe a typical transaction flow from:
+User Request → Controller → Service → Business Logic → Database / External Systems → Response
+
+Provide sequence-style explanation.
+
+### 4. Integration Landscape
+Identify:
+- Databases
+- Message queues
+- REST services
+- SOAP services
+- Authentication providers
+- File shares
+- External applications
+
+Generate an integration inventory table.
+
+### 5. Deployment Architecture
+Determine:
+- Current runtime platform
+- Tomcat/WebSphere/WebLogic/Liberty usage
+- Packaging type (WAR/EAR/JAR)
+- JVM requirements
+- Configuration dependencies
+- Shared infrastructure dependencies
+
+### 6. Architecture Highlights
+Provide 8-10 concise bullet points suitable for inclusion in a Solution Blueprint or Target Architecture document.
+
+### 7. Containerization Observations
+Identify:
+- Stateless components
+- Stateful components
+- Session management
+- File system dependencies
+- Configuration externalization opportunities
+- OpenShift readiness observations
+
+### 8. Target Architecture Inputs
+Generate a section titled:
+
+"Key Architecture Highlights for Target State Design"
+
+Include:
+- Core application components
+- Deployment pattern recommendation
+- Scaling considerations
+- Integration considerations
+- Security considerations
+- OpenShift deployment considerations
+
+Where evidence exists, reference specific classes, packages, configuration files, and build files that support the conclusions.
+
+If information is missing, explicitly state assumptions instead of guessing.
