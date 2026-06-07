@@ -1,0 +1,45 @@
+Complete Containerization Readiness Assessment
+Act as a Senior OpenShift Containerization Architect.
+
+Analyze the entire repository and determine its readiness for migration to Red Hat OpenShift on-premise.
+
+Perform the analysis in the following order:
+
+1. Identify application types:
+   - Java, Spring, Jakarta EE, WebLogic, WebSphere, Tomcat
+   - Monolith, modular monolith, microservice
+   - WAR, EAR, JAR packaging
+
+2. Discover runtime dependencies:
+   - Application servers
+   - Middleware
+   - Shared libraries
+   - External services
+   - Databases
+   - File systems
+
+3. Identify containerization blockers:
+   - Hardcoded paths
+   - Local filesystem dependencies
+   - Server-specific configurations
+   - Stateful components
+   - OS-specific scripts
+   - Unsupported libraries
+
+4. Evaluate OpenShift compatibility:
+   - Security Context Constraints
+   - Non-root execution
+   - Persistent storage requirements
+   - Networking requirements
+   - Secrets and ConfigMaps suitability
+
+5. Produce a readiness score (0-100).
+
+Output:
+- Executive Summary
+- Readiness Score
+- Findings
+- Risks
+- Remediation Actions
+- Effort Estimate (Low/Medium/High)
+- OpenShift Migration Recommendation
