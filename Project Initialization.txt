@@ -1,0 +1,18 @@
+Analyze my entire VS Code workspace.
+
+The workspace contains multiple application repositories under a common root folder.
+
+Identify:
+
+1. All repositories in the workspace
+2. Application names
+3. Technology stack used by each repository
+4. Java version
+5. Build tool (Maven/Gradle/Ant)
+6. Application server (Tomcat/WebSphere/WebLogic/Liberty)
+7. Frameworks detected (Spring Boot, Spring MVC, Hibernate, Jakarta EE, etc.)
+8. Packaging type (WAR/EAR/JAR)
+9. Key external integrations
+10. Containerization indicators already present
+
+Create a workspace inventory table and explain the purpose of each repository.
