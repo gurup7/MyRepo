@@ -1,0 +1,9 @@
+Target Architecture
+
+The target architecture introduces an API-led integration pattern where digital channels interact with backend services through Apigee, which acts as the API management layer. Incoming requests from mobile/digital applications are routed from Apigee to NGINX using secure mTLS/HTTPS communication.
+
+NGINX forwards the requests to PSG running within an OpenShift environment. PSG serves as the entry point to a set of containerized microservices deployed in the CHUB OpenShift namespace. These microservices process customer-related functions such as authentication, customer profile, consent management, channel activity analysis, and administrative services.
+
+Backend integrations are performed through internal components including BW Router and AB CF, which provide capabilities such as enquiry processing, deduplication, linkage, maintenance, and ECR-related functions. Persistent data access is provided through the Oracle DB (CHEB EVENT) using JDBC connectivity. The architecture also integrates with external systems such as Solace, EventHub/Kafka, and RM for messaging and downstream interactions.
+
+Key Flow: Digital Channels → Apigee → NGINX → PSG (OpenShift) → Backend Microservices → BW/AB CF Services → Oracle Database and External Systems.
