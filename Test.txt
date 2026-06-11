@@ -1,9 +1,78 @@
-Target Architecture
+# Maven Dependency, Vulnerability & JDK 21 Readiness Assessment
 
-The target architecture introduces an API-led integration pattern where digital channels interact with backend services through Apigee, which acts as the API management layer. Incoming requests from mobile/digital applications are routed from Apigee to NGINX using secure mTLS/HTTPS communication.
+Analyze the provided `pom.xml` and generate a migration assessment report.
 
-NGINX forwards the requests to PSG running within an OpenShift environment. PSG serves as the entry point to a set of containerized microservices deployed in the CHUB OpenShift namespace. These microservices process customer-related functions such as authentication, customer profile, consent management, channel activity analysis, and administrative services.
+## 1. Dependency Inventory
+Identify all major direct dependencies and provide:
 
-Backend integrations are performed through internal components including BW Router and AB CF, which provide capabilities such as enquiry processing, deduplication, linkage, maintenance, and ECR-related functions. Persistent data access is provided through the Oracle DB (CHEB EVENT) using JDBC connectivity. The architecture also integrates with external systems such as Solace, EventHub/Kafka, and RM for messaging and downstream interactions.
+| GroupId:ArtifactId | Current Version | Scope | Purpose |
+|-------------------|----------------|--------|---------|
 
-Key Flow: Digital Channels → Apigee → NGINX → PSG (OpenShift) → Backend Microservices → BW/AB CF Services → Oracle Database and External Systems.
+## 2. Security Assessment
+For each dependency:
+
+- Check for known CVEs/vulnerabilities.
+- Include:
+  - CVE ID(s)
+  - Severity (Critical/High/Medium/Low)
+  - Affected version range
+  - Minimum fixed version
+  - Source reference
+
+## 3. JDK 21 Compatibility Analysis
+Evaluate each major dependency and plugin for Java 21 compatibility.
+
+Include:
+- Compatible (Y/N)
+- Recommended version for JDK 21
+- Compatibility concerns
+- Breaking changes (if any)
+
+Assess the following plugins explicitly:
+- maven-compiler-plugin
+- maven-surefire-plugin
+- maven-failsafe-plugin
+- jacoco-maven-plugin
+- spring-boot-maven-plugin
+- maven-war-plugin
+- maven-jar-plugin
+- Any other significant plugin found in the pom.xml
+
+## 4. Spring Boot & Framework Upgrade Recommendations
+If applicable:
+- Current Spring Boot version
+- Recommended Spring Boot version for JDK 21
+- Required Spring Framework upgrades
+- Dependency alignment recommendations
+
+## 5. Executive Summary
+Provide a repository-level summary:
+
+| Repo | Risk (High/Medium/Low) | JDK 21 Readiness | Key Risks | Recommended Actions |
+|------|------------------------|------------------|-----------|---------------------|
+
+## 6. Detailed Findings
+Provide the following table:
+
+| Repo | Dependency/Plugin | Current Version | Vulnerability | Severity | JDK 21 Compatible (Y/N) | Recommended Version | Reason / Notes |
+|------|-------------------|-----------------|--------------|----------|-------------------------|--------------------|---------------|
+
+## 7. JDK 21 Upgrade Insights
+Provide a final summary table:
+
+### Insight for JDK 21 Upgrade
+
+| Area | Observation | Impact | Recommendation |
+|------|-------------|---------|----------------|
+| Dependencies | | | |
+| Plugins | | | |
+| Spring Boot | | | |
+| Security | | | |
+| Build Process | | | |
+
+## Output Guidelines
+- Focus on direct dependencies first.
+- Highlight blockers for JDK 21 migration.
+- Prioritize security and compatibility risks.
+- Recommend the safest upgrade path with minimal disruption.
+- Clearly identify dependencies that require code changes versus version-only upgrades.
