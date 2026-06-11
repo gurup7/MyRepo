@@ -1,78 +1,68 @@
-# Maven Dependency, Vulnerability & JDK 21 Readiness Assessment
+REFINED PROMPT
 
-Analyze the provided `pom.xml` and generate a migration assessment report.
+# Multi-Repository Maven & JDK 21 Migration Assessment
 
-## 1. Dependency Inventory
-Identify all major direct dependencies and provide:
+Analyze all repositories in the current workspace and identify every `pom.xml`.
 
-| GroupId:ArtifactId | Current Version | Scope | Purpose |
-|-------------------|----------------|--------|---------|
+For each repository:
 
-## 2. Security Assessment
-For each dependency:
+## Assessment Scope
 
-- Check for known CVEs/vulnerabilities.
-- Include:
-  - CVE ID(s)
-  - Severity (Critical/High/Medium/Low)
-  - Affected version range
-  - Minimum fixed version
-  - Source reference
+1. Extract major direct dependencies (groupId:artifactId, version, scope).
+2. Check known vulnerabilities (CVEs) and include:
+   - Severity (Critical/High/Medium/Low)
+   - Fixed version
+3. Assess JDK 21 compatibility for:
+   - Dependencies
+   - Maven plugins
+4. Review JDK 21 readiness of key plugins:
+   - maven-compiler-plugin
+   - maven-surefire-plugin
+   - maven-failsafe-plugin
+   - jacoco-maven-plugin
+   - spring-boot-maven-plugin
+   - Other significant plugins found
+5. If Spring Boot is used:
+   - Identify current version
+   - Recommend JDK 21 compatible version
+   - Highlight required Spring Framework upgrades
+6. Flag potential breaking changes or code remediation requirements.
 
-## 3. JDK 21 Compatibility Analysis
-Evaluate each major dependency and plugin for Java 21 compatibility.
+---
 
-Include:
-- Compatible (Y/N)
-- Recommended version for JDK 21
-- Compatibility concerns
-- Breaking changes (if any)
+## Output Format
 
-Assess the following plugins explicitly:
-- maven-compiler-plugin
-- maven-surefire-plugin
-- maven-failsafe-plugin
-- jacoco-maven-plugin
-- spring-boot-maven-plugin
-- maven-war-plugin
-- maven-jar-plugin
-- Any other significant plugin found in the pom.xml
+### 1. Executive Summary (One Row Per Repository)
 
-## 4. Spring Boot & Framework Upgrade Recommendations
-If applicable:
-- Current Spring Boot version
-- Recommended Spring Boot version for JDK 21
-- Required Spring Framework upgrades
-- Dependency alignment recommendations
+| Repo | Risk (High/Medium/Low) | JDK 21 Readiness | Critical Findings | Recommended Action |
+|------|------------------------|------------------|-------------------|-------------------|
 
-## 5. Executive Summary
-Provide a repository-level summary:
+---
 
-| Repo | Risk (High/Medium/Low) | JDK 21 Readiness | Key Risks | Recommended Actions |
-|------|------------------------|------------------|-----------|---------------------|
+### 2. Detailed Findings
 
-## 6. Detailed Findings
-Provide the following table:
+| Repo | Dependency / Plugin | Current Version | Vulnerability (CVE) | Severity | JDK 21 Compatible (Y/N) | Recommended Version | Notes |
+|------|---------------------|-----------------|---------------------|----------|-------------------------|---------------------|-------|
 
-| Repo | Dependency/Plugin | Current Version | Vulnerability | Severity | JDK 21 Compatible (Y/N) | Recommended Version | Reason / Notes |
-|------|-------------------|-----------------|--------------|----------|-------------------------|--------------------|---------------|
+Only include:
+- Major dependencies
+- Vulnerable dependencies
+- Dependencies/plugins requiring upgrades for JDK 21
 
-## 7. JDK 21 Upgrade Insights
-Provide a final summary table:
+---
 
-### Insight for JDK 21 Upgrade
+### 3. JDK 21 Upgrade Insights
 
-| Area | Observation | Impact | Recommendation |
+| Repo | Observation | Impact | Recommendation |
 |------|-------------|---------|----------------|
-| Dependencies | | | |
-| Plugins | | | |
-| Spring Boot | | | |
-| Security | | | |
-| Build Process | | | |
+| Repo Name | Key migration blockers, outdated libraries, plugin issues, Spring Boot concerns, security risks | High/Medium/Low | Recommended upgrade path |
 
-## Output Guidelines
-- Focus on direct dependencies first.
-- Highlight blockers for JDK 21 migration.
-- Prioritize security and compatibility risks.
-- Recommend the safest upgrade path with minimal disruption.
-- Clearly identify dependencies that require code changes versus version-only upgrades.
+---
+
+## Rules
+
+- Group all findings by repository name.
+- Prioritize security vulnerabilities and JDK 21 blockers.
+- Recommend the safest target version rather than the latest version.
+- Clearly identify dependencies requiring code changes versus simple version upgrades.
+- Keep the report concise and actionable.
