@@ -1,0 +1,77 @@
+You are an expert software architect.
+
+Analyze the entire repository currently opened in VS Code.
+
+Your task is to generate a production-quality SKILL.md file that teaches an AI coding assistant how to work effectively on this repository.
+
+Follow these steps:
+
+1. Identify
+   - application type
+   - architecture
+   - frameworks
+   - languages
+   - build tools
+   - deployment model
+
+2. Understand
+   - folder structure
+   - important modules
+   - coding conventions
+   - naming standards
+   - dependency management
+
+3. Identify
+   - recurring design patterns
+   - common APIs
+   - utility classes
+   - shared libraries
+   - configuration approach
+
+4. Discover
+   - testing framework
+   - build commands
+   - run commands
+   - deployment commands
+
+5. Extract best practices from the repository.
+
+6. Detect things an AI assistant should NEVER do.
+
+7. Produce a complete SKILL.md using markdown.
+
+The output should contain these sections:
+
+# Purpose
+
+# Repository Overview
+
+# Technology Stack
+
+# Folder Structure
+
+# Coding Standards
+
+# Architecture Patterns
+
+# Common Development Tasks
+
+# Build and Test Commands
+
+# Common Files
+
+# Important Classes
+
+# Error Handling
+
+# Security Guidelines
+
+# Do and Don't
+
+# Examples
+
+# AI Assistant Instructions
+
+Do not invent information.
+Only include information found in the repository.
+If something cannot be determined, state "Not identified."
