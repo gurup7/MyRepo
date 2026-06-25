@@ -1,5 +1,5 @@
 
-
+https://github.com/decebals/claude-code-java/blob/main/.claude/skills/java-migration/SKILL.md
 your-project/
 │
 ├── .github/
