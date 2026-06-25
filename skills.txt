@@ -1,0 +1,42 @@
+
+
+your-project/
+│
+├── .github/
+│   └── skills/
+│       ├── containerization/
+│       │      SKILL.md
+│       │      examples/
+│       │      templates/
+│       │
+│       ├── modernization/
+│       │      SKILL.md
+│       │
+│       └── architecture-review/
+│              SKILL.md
+
+*************
+---
+name: Java Modernization
+description: Use when analyzing Java applications for migration to Java 21, Spring Boot 3, OpenShift or containerization.
+---
+
+# Goal
+
+Analyze enterprise Java applications.
+
+## Tasks
+
+- Review pom.xml
+- Identify deprecated APIs
+- Detect Java version
+- Recommend dependency upgrades
+- Identify WebSphere migration issues
+- Produce modernization report
+
+## Output
+
+- Executive Summary
+- Risks
+- Required Code Changes
+- Migration Complexity
