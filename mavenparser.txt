@@ -1,0 +1,262 @@
+# ============================================================================
+# Maven Parser Automation Script
+# ============================================================================
+# USAGE:
+#   1. Update the CONFIGURATION section below with your credentials and repos
+#   2. Place this script in the same folder as mavenParserCITIJdk8-v3.jar
+#   3. Run: powershell -ExecutionPolicy Bypass -File run-maven-parser.ps1
+#
+# PORTABILITY:
+#   - Save as .txt to upload to personal git repo
+#   - Download on VDI and rename to .ps1
+# ============================================================================
+
+# ========================== CONFIGURATION START ==============================
+
+# --- Credentials (update once per user) ---
+$userName = ""
+$accessToken = ""
+
+# --- Proxy Settings ---
+$useProxy = $true
+$proxyHost = "127.0.0.1"
+$proxyPort = 9000
+
+# --- Jar File Name (update if version changes) ---
+$jarFileName = "mavenParserCITIJdk8-v3.jar"
+
+# --- Base URL (do not change unless using Bitbucket) ---
+$baseUrl = "https://raw.githubusercontent.com"
+
+# --- Org Settings ---
+$orgIndicator = "Y"
+$orgName = "CitiInternalLS2"
+
+# --- Repository List ---
+# Format: @{ url="GitHub repo URL"; pomFilePath="folder containing pom.xml"; branch="branch name" }
+# Add or remove entries as needed. One entry per microservice component.
+$repos = @(
+    @{
+        url       = "https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.aut-d-partyauth-xd-ea-em"
+        pomFilePath = "AUTH-D-PartyAuth-XD-EA"
+        branch    = "main"
+    },
+    @{
+        url       = "https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.aim-d-channelact-cde-xd-ea-em"
+        pomFilePath = "AIM-D-ChannelAct-CDE-XD-EA"
+        branch    = "main"
+    },
+    @{
+        url       = "https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.cst-d-custprofile-xd-ea-em"
+        pomFilePath = "CST-D-CustProfile-XD-EA"
+        branch    = "main"
+    },
+    @{
+        url       = "https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.cus-d-custcnst-agmt-xd-ea-em"
+        pomFilePath = "CUS-D-CustCnst-Agmt-XD-EA"
+        branch    = "main"
+    },
+    @{
+        url       = "https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.rsk-d-demgphcscrn-kyc-xd-ea-em"
+        pomFilePath = "RSK-D-DemgphcScrn-KYC-XD-EA"
+        branch    = "main"
+    },
+    @{
+        url       = "https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.xp-d-issdvcadmin-card-xd-ea-em"
+        pomFilePath = "XP-D-IssDvcAdmin-Card-XD-EA"
+        branch    = "main"
+    }
+    # --- ADD MORE REPOS BELOW THIS LINE ---
+    # @{
+    #     url       = "https://github.com/CitiInternalLS2/your-repo-name"
+    #     pomFilePath = "YourModuleFolder"
+    #     branch    = "main"
+    # }
+)
+
+# ========================== CONFIGURATION END ================================
+
+# ============================================================================
+# SCRIPT LOGIC (do not modify below unless you know what you're doing)
+# ============================================================================
+
+$ErrorActionPreference = "Stop"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$jarPath = Join-Path $scriptDir $jarFileName
+$applicationYamlPath = Join-Path $scriptDir "application.yaml"
+$mergedOutputFile = Join-Path $scriptDir "dependencies_merged.csv"
+$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+Write-Host ""
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  Maven Parser Automation" -ForegroundColor Cyan
+Write-Host "  Started: $timestamp" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host ""
+
+# --- Validate jar file exists ---
+if (-not (Test-Path $jarPath)) {
+    Write-Host "[ERROR] Jar file not found: $jarPath" -ForegroundColor Red
+    Write-Host "        Place this script in the same folder as $jarFileName" -ForegroundColor Red
+    exit 1
+}
+
+# --- Validate Java is on PATH ---
+try {
+    $javaVersion = java -version 2>&1 | Select-Object -First 1
+    Write-Host "[OK] Java found: $javaVersion" -ForegroundColor Green
+} catch {
+    Write-Host "[ERROR] Java not found on PATH. Please install Java or add it to PATH." -ForegroundColor Red
+    exit 1
+}
+
+# --- Validate access token is set ---
+if ([string]::IsNullOrWhiteSpace($accessToken)) {
+    Write-Host "[ERROR] accessToken is empty. Please update the CONFIGURATION section." -ForegroundColor Red
+    exit 1
+}
+
+# --- Validate access token by testing first repo ---
+Write-Host ""
+Write-Host "[INFO] Validating GitHub access token..." -ForegroundColor Yellow
+$testRepo = $repos[0]
+$testRepoName = ($testRepo.url -split '/')[-1]
+$testUrl = "$baseUrl/$orgName/$testRepoName/$($testRepo.branch)/$($testRepo.pomFilePath)/pom.xml"
+
+try {
+    $headers = @{ "Authorization" = "token $accessToken" }
+    if ($useProxy) {
+        $proxyUri = "http://${proxyHost}:${proxyPort}"
+        $response = Invoke-WebRequest -Uri $testUrl -Headers $headers -Proxy $proxyUri -UseBasicParsing -TimeoutSec 15
+    } else {
+        $response = Invoke-WebRequest -Uri $testUrl -Headers $headers -UseBasicParsing -TimeoutSec 15
+    }
+    if ($response.StatusCode -eq 200) {
+        Write-Host "[OK] Token validated successfully against: $testRepoName" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "[ERROR] Token validation failed!" -ForegroundColor Red
+    Write-Host "        URL tested: $testUrl" -ForegroundColor Red
+    Write-Host "        Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "        Possible causes:" -ForegroundColor Yellow
+    Write-Host "        - Token expired or revoked" -ForegroundColor Yellow
+    Write-Host "        - SSO not authorized for this token" -ForegroundColor Yellow
+    Write-Host "        - Repo URL or pomFilePath incorrect" -ForegroundColor Yellow
+    Write-Host "        - Proxy settings incorrect" -ForegroundColor Yellow
+    exit 1
+}
+
+# --- Generate application.yaml ---
+Write-Host ""
+Write-Host "[INFO] Generating application.yaml for $($repos.Count) repositories..." -ForegroundColor Yellow
+
+$yamlContent = @"
+BitBucketProps:
+  userName: $userName
+  accessToken: $accessToken
+  baseUrl: $baseUrl
+repos:
+"@
+
+foreach ($repo in $repos) {
+    $repoName = ($repo.url -split '/')[-1]
+    $yamlContent += @"
+
+  - name: $repoName
+    orgIndicator: $orgIndicator
+    orgName: $orgName
+    pomFilePath: $($repo.pomFilePath)
+    branchName: $($repo.branch)
+"@
+}
+
+$yamlContent += @"
+
+proxy:
+  useProxy: $($useProxy.ToString().ToLower())
+  proxyHost: $proxyHost
+  proxyPort: $proxyPort
+"@
+
+# Write the generated YAML
+$yamlContent | Out-File -FilePath $applicationYamlPath -Encoding UTF8
+Write-Host "[OK] application.yaml generated with $($repos.Count) repos" -ForegroundColor Green
+
+# --- Display repos being processed ---
+Write-Host ""
+Write-Host "Repositories to process:" -ForegroundColor Cyan
+$repoIndex = 1
+foreach ($repo in $repos) {
+    $repoName = ($repo.url -split '/')[-1]
+    Write-Host "  $repoIndex. $repoName [$($repo.branch)] -> $($repo.pomFilePath)" -ForegroundColor White
+    $repoIndex++
+}
+
+# --- Execute Maven Parser ---
+Write-Host ""
+Write-Host "[INFO] Running Maven Parser..." -ForegroundColor Yellow
+Write-Host "       Command: java -jar $jarFileName APPLICATION_YAML=application.yaml" -ForegroundColor Gray
+Write-Host ""
+
+Push-Location $scriptDir
+try {
+    java -jar $jarFileName "APPLICATION_YAML=application.yaml"
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        Write-Host "[ERROR] Maven Parser exited with code: $exitCode" -ForegroundColor Red
+        Pop-Location
+        exit $exitCode
+    }
+} catch {
+    Write-Host "[ERROR] Failed to execute Maven Parser: $($_.Exception.Message)" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
+Pop-Location
+
+# --- Merge all dependencies.csv files into one ---
+Write-Host ""
+Write-Host "[INFO] Merging dependencies.csv files..." -ForegroundColor Yellow
+
+$allCsvFiles = Get-ChildItem -Path $scriptDir -Recurse -Filter "dependencies.csv" | Where-Object {
+    $_.DirectoryName -ne $scriptDir
+}
+
+if ($allCsvFiles.Count -eq 0) {
+    Write-Host "[WARN] No dependencies.csv files found in output directories." -ForegroundColor Yellow
+    Write-Host "       Check if the Maven Parser produced output." -ForegroundColor Yellow
+} else {
+    $isFirst = $true
+    $mergedLines = @()
+
+    foreach ($csvFile in $allCsvFiles) {
+        $lines = Get-Content $csvFile.FullName
+        if ($isFirst) {
+            # Include header from first file
+            $mergedLines += $lines
+            $isFirst = $false
+        } else {
+            # Skip header (first line) for subsequent files
+            if ($lines.Count -gt 1) {
+                $mergedLines += $lines[1..($lines.Count - 1)]
+            }
+        }
+    }
+
+    $mergedLines | Out-File -FilePath $mergedOutputFile -Encoding UTF8
+    $dataRowCount = $mergedLines.Count - 1  # subtract header
+
+    Write-Host "[OK] Merged $($allCsvFiles.Count) files -> dependencies_merged.csv ($dataRowCount dependencies total)" -ForegroundColor Green
+}
+
+# --- Summary ---
+Write-Host ""
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  COMPLETE" -ForegroundColor Green
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  Repos processed : $($repos.Count)" -ForegroundColor White
+Write-Host "  Output file     : $mergedOutputFile" -ForegroundColor White
+Write-Host "  Time            : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host ""
