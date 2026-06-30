@@ -1,1 +1,5 @@
+$ErrorActionPreference = "Continue"
+$javaVersion = & $javaPath -version 2>&1 | Select-Object -First 1
+$ErrorActionPreference = "Stop"
+Write-Host "[OK] Java found: $javaVersion" -ForegroundColor Green
 
