@@ -4,7 +4,7 @@
 # USAGE:
 #   1. Update the CONFIGURATION section below with your credentials and repos
 #   2. Place this script in the same folder as mavenParserCITIJdk8-v3.jar
-#   3. Run: powershell -ExecutionPolicy Bypass -File run-maven-parser.ps1
+#   3. Run: powershell -ExecutionPolicy Bypass -File mavenparser.ps1
 #
 # PORTABILITY:
 #   - Save as .txt to upload to personal git repo
@@ -21,6 +21,9 @@ $accessToken = ""
 $useProxy = $true
 $proxyHost = "127.0.0.1"
 $proxyPort = 9000
+
+# --- Java Path (update with full path from 'where java' in cmd) ---
+$javaPath = "C:\Program Files (x86)\Common Files\Oracle\Java\java8path\java.exe"
 
 # --- Jar File Name (update if version changes) ---
 $jarFileName = "mavenParserCITIJdk8-v3.jar"
@@ -101,12 +104,17 @@ if (-not (Test-Path $jarPath)) {
     exit 1
 }
 
-# --- Validate Java is on PATH ---
+# --- Validate Java path ---
+if (-not (Test-Path $javaPath)) {
+    Write-Host "[ERROR] Java not found at: $javaPath" -ForegroundColor Red
+    Write-Host "        Update javaPath in the CONFIGURATION section (line 28)" -ForegroundColor Red
+    exit 1
+}
 try {
-    $javaVersion = java -version 2>&1 | Select-Object -First 1
+    $javaVersion = & $javaPath -version 2>&1 | Select-Object -First 1
     Write-Host "[OK] Java found: $javaVersion" -ForegroundColor Green
 } catch {
-    Write-Host "[ERROR] Java not found on PATH. Please install Java or add it to PATH." -ForegroundColor Red
+    Write-Host "[ERROR] Failed to run Java: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
 
@@ -196,12 +204,12 @@ foreach ($repo in $repos) {
 # --- Execute Maven Parser ---
 Write-Host ""
 Write-Host "[INFO] Running Maven Parser..." -ForegroundColor Yellow
-Write-Host "       Command: java -jar $jarFileName APPLICATION_YAML=application.yaml" -ForegroundColor Gray
+Write-Host "       Command: $javaPath -jar $jarFileName APPLICATION_YAML=application.yaml" -ForegroundColor Gray
 Write-Host ""
 
 Push-Location $scriptDir
 try {
-    java -jar $jarFileName "APPLICATION_YAML=application.yaml"
+    & $javaPath -jar $jarFileName "APPLICATION_YAML=application.yaml"
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         Write-Host "[ERROR] Maven Parser exited with code: $exitCode" -ForegroundColor Red
