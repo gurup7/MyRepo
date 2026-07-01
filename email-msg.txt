@@ -1,0 +1,25 @@
+I reached out to Ajit for Blueprint (BP) approval, following which he requested a discussion to better understand the proposal. Sandeep also joined the call.
+
+During the discussion, Ajit raised a few concerns. His primary view is that the Citi application team already knows the required implementation activities, and therefore he does not see significant value in IBM performing what he considers project management (PM) activities. I walked him through the rationale and supporting data points behind the blueprint, but we could not reach alignment.
+
+The key discussion point was around the Security Proxy component.
+
+Based on discussions with the application team, we identified that the Security Proxy component, currently running on WebSphere, can potentially be retired, with its functionality being absorbed into the existing PSG Assisted platform. As a result, the associated VMs could be decommissioned once the PSG onboarding and configuration activities are completed.
+
+However, Ajit is requesting IBM's commitment that these VMs can be untagged/decommissioned by the end of December before he provides BP approval.
+
+The challenge is that achieving this timeline depends on several activities that are currently owned or driven by the Citi team, including:
+
+PSG onboarding
+NGINX configuration
+Eclipse configuration
+Any associated application validation
+
+Since these activities are outside IBM's direct control, it is difficult for us to provide a firm commitment on the decommissioning date.
+
+Ajit mentioned that he plans to raise this concern in the CBCG discussion.
+
+Could you please advise how you would like us to handle this? Specifically, should we:
+
+Commit to a target date with explicit assumptions and dependencies, or
+Clearly document that the timeline is contingent upon Citi completing the prerequisite activitie
