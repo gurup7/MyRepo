@@ -1,0 +1,64 @@
+{
+  "Repos": [
+    {
+      "Name": "aut-d-partyauth-xd-ea-em",
+      "Url": "https://github.com/YOUR_ORG/aut-d-partyauth-xd-ea-em.git"
+    },
+    {
+      "Name": "xp-d-issdvcadmin-card-xd-ea-em",
+      "Url": "https://github.com/YOUR_ORG/xp-d-issdvcadmin-card-xd-ea-em.git"
+    },
+    {
+      "Name": "cus-d-custcnst-agmt-xd-ea-em",
+      "Url": "https://github.com/YOUR_ORG/cus-d-custcnst-agmt-xd-ea-em.git"
+    },
+    {
+      "Name": "cst-d-custprofile-xd-ea-em",
+      "Url": "https://github.com/YOUR_ORG/cst-d-custprofile-xd-ea-em.git"
+    },
+    {
+      "Name": "aim-d-channelact-cde-xd-ea-em",
+      "Url": "https://github.com/YOUR_ORG/aim-d-channelact-cde-xd-ea-em.git"
+    },
+    {
+      "Name": "rsk-d-demgphcscrm-kyc-xd-ea-em",
+      "Url": "https://github.com/YOUR_ORG/rsk-d-demgphcscrm-kyc-xd-ea-em.git"
+    }
+  ],
+  "VersionMatrix": {
+    "Boot3": {
+      "spring-boot.version": "3.5.13",
+      "spring-framework.version": "6.2.19",
+      "spring-retry.version": "2.0.13",
+      "micrometer.version": "1.15.12",
+      "micrometer-bom.version": "1.15.12",
+      "netty.version": "4.1.135.Final",
+      "netty-bom.version": "4.1.135.Final",
+      "tomcat.version": "10.1.55",
+      "bouncycastle.version": "1.84",
+      "opentelemetry.version": "1.62.0",
+      "thymeleaf.version": "3.1.4.RELEASE",
+      "spring-kafka.version": "3.3.16",
+      "spring-data-bom.version": "3.5.12",
+      "neethi.version": "3.2.2"
+    },
+    "Boot4": {
+      "spring-boot.version": "4.0.7",
+      "spring-framework.version": "7.0.8",
+      "spring-retry.version": "2.0.13",
+      "micrometer.version": "1.16.6",
+      "micrometer-bom.version": "1.16.6",
+      "netty.version": "4.1.135.Final",
+      "netty-bom.version": "4.1.135.Final",
+      "tomcat.version": "11.0.22",
+      "opentelemetry.version": "1.62.0"
+    }
+  },
+  "JavaVersion": "21",
+  "DockerBaseImages": {
+    "Boot3": "tomcat:10.1-jdk21-temurin-jammy",
+    "Boot4": "tomcat:11.0-jdk21-temurin-jammy"
+  },
+  "BranchNameTemplate": "fix/snyk-cve-remediation-{date}",
+  "CommitMessage": "fix: remediate Snyk CVEs - upgrade dependencies and JDK to 21"
+}
