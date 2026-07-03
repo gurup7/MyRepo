@@ -1,0 +1,207 @@
+================================================================================
+SNYK VULNERABILITY REMEDIATION - STEP BY STEP SETUP GUIDE
+================================================================================
+
+OVERVIEW
+--------
+This package contains:
+  1. INSTRUCTIONS.txt        - This file (setup guide)
+  2. SKILL-snyk-remediation.txt - GitHub Copilot custom instructions (skill)
+  3. SCRIPT-Invoke-SnykRemediation.txt - PowerShell automation script
+  4. CONFIG-remediation.txt  - Configuration file with repos and versions
+  5. QUICK-REFERENCE.txt     - Cheat sheet for demo day
+
+TRANSFER PROCESS
+----------------
+Since you cannot directly transfer .ps1/.md/.json files to the client VDI:
+
+  1. Upload all .txt files to your personal GitHub repo
+  2. On client VDI, clone/download from your personal repo
+  3. Rename files as described below in Step 2
+
+================================================================================
+STEP 1: PREPARE YOUR CLIENT VDI WORKSPACE
+================================================================================
+
+Open PowerShell on your client VDI and run:
+
+  mkdir C:\work\snyk-remediation
+  cd C:\work\snyk-remediation
+
+================================================================================
+STEP 2: RENAME THE .TXT FILES TO THEIR ACTUAL EXTENSIONS
+================================================================================
+
+After copying the .txt files to your client VDI, rename them:
+
+  copy SKILL-snyk-remediation.txt  copilot-instructions.md
+  copy SCRIPT-Invoke-SnykRemediation.txt  Invoke-SnykRemediation.ps1
+  copy CONFIG-remediation.txt  remediation-config.json
+
+================================================================================
+STEP 3: SET UP THE SKILL FILE IN EACH REPO
+================================================================================
+
+The skill file tells GitHub Copilot Chat HOW to fix vulnerabilities.
+You need to place it in each of your 6 repos.
+
+Option A: Manual placement (per repo)
+--------------------------------------
+For each repo folder:
+
+  cd C:\work\repos\aut-d-partyauth-xd-ea-em
+  mkdir .github
+  copy C:\work\snyk-remediation\copilot-instructions.md .github\copilot-instructions.md
+
+Repeat for all 6 repos. OR use this PowerShell one-liner:
+
+  $repos = @(
+    "C:\work\repos\aut-d-partyauth-xd-ea-em",
+    "C:\work\repos\xp-d-issdvcadmin-card-xd-ea-em",
+    "C:\work\repos\cus-d-custcnst-agmt-xd-ea-em",
+    "C:\work\repos\cst-d-custprofile-xd-ea-em",
+    "C:\work\repos\aim-d-channelact-cde-xd-ea-em",
+    "C:\work\repos\rsk-d-demgphcscrm-kyc-xd-ea-em"
+  )
+
+  foreach ($repo in $repos) {
+    $ghDir = Join-Path $repo ".github"
+    if (-not (Test-Path $ghDir)) { mkdir $ghDir }
+    Copy-Item "C:\work\snyk-remediation\copilot-instructions.md" "$ghDir\copilot-instructions.md"
+    Write-Host "Skill installed: $repo"
+  }
+
+Option B: Workspace-level (if using VS Code multi-root workspace)
+-----------------------------------------------------------------
+Place in .vscode folder instead:
+  .vscode\copilot-instructions.md
+
+================================================================================
+STEP 4: CONFIGURE THE SCRIPT
+================================================================================
+
+1. Open remediation-config.json
+2. Update the "Url" field for each repo with the actual git clone URL:
+   
+   Example:
+   "Url": "https://github.yourcompany.com/org/aut-d-partyauth-xd-ea-em.git"
+
+3. Update repo paths if your local clone locations differ from defaults
+
+================================================================================
+STEP 5: RUN THE SCRIPT (DRY RUN FIRST)
+================================================================================
+
+Always start with a dry run to see what would change without modifying files:
+
+  cd C:\work\snyk-remediation
+  .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -DryRun
+
+Review the output. It will show:
+  - Which pom.xml files it found
+  - Which versions it would change
+  - Which Dockerfiles it would update
+
+================================================================================
+STEP 6: RUN THE SCRIPT (LIVE - APPLY FIXES)
+================================================================================
+
+Once satisfied with dry run output:
+
+  .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos"
+
+This will:
+  - Create a branch: fix/snyk-cve-remediation-YYYYMMDD
+  - Update all pom.xml version properties
+  - Update Dockerfiles (jdk17 -> jdk21)
+  - Commit changes
+  - Push branches
+  - Create PRs (if gh CLI is available)
+
+================================================================================
+STEP 7: USE COPILOT CHAT FOR EDGE CASES
+================================================================================
+
+If the script misses something (e.g., a dep managed differently), open the
+repo in VS Code and use Copilot Chat:
+
+  @workspace Fix the remaining Snyk vulnerabilities following the skill instructions
+
+Because the skill file is in .github/copilot-instructions.md, Copilot will
+automatically read it and know exactly what versions to target.
+
+Other useful Copilot prompts:
+  @workspace Show me all dependencies still on vulnerable versions
+  @workspace Add a dependencyManagement override for micrometer-core 1.15.12
+  @workspace Update the parent POM to Spring Boot 3.5.13
+
+================================================================================
+STEP 8: VALIDATE
+================================================================================
+
+After the script runs, validate each service builds:
+
+  cd C:\work\repos\aut-d-partyauth-xd-ea-em
+  mvn clean compile -DskipTests
+
+Or use the validation flag in the script:
+
+  .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -Validate
+
+================================================================================
+STEP 9: VERIFY SNYK FINDINGS ARE RESOLVED
+================================================================================
+
+After PRs are merged:
+  1. Re-run Snyk scan on each repo
+  2. Confirm CVE count drops to zero (or near-zero)
+  3. Save the before/after comparison for your demo
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Problem: "execution of scripts is disabled on this system"
+Fix:     Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
+
+Problem: Script doesn't find pom.xml files
+Fix:     Check -RootDir points to the parent folder containing all 6 repos
+
+Problem: Git push fails
+Fix:     Ensure you're authenticated (git config credential.helper, or gh auth login)
+
+Problem: A specific dependency version didn't change
+Reason:  It may not be declared as a property. Use Copilot Chat:
+         @workspace Add <micrometer.version>1.15.12</micrometer.version> to properties
+
+Problem: Build fails after version bump
+Fix:     Usually a transitive conflict. Run:
+         mvn dependency:tree -Dverbose -Dincludes=<artifactId>
+         Then add explicit override in <dependencyManagement>
+
+================================================================================
+FOLDER STRUCTURE (EXPECTED)
+================================================================================
+
+C:\work\
+  repos\
+    aut-d-partyauth-xd-ea-em\
+      .github\copilot-instructions.md    <-- skill file
+      pom.xml                            <-- will be updated
+      Dockerfile                         <-- will be updated
+    xp-d-issdvcadmin-card-xd-ea-em\
+      ...
+    cus-d-custcnst-agmt-xd-ea-em\
+      ...
+    cst-d-custprofile-xd-ea-em\
+      ...
+    aim-d-channelact-cde-xd-ea-em\
+      ...
+    rsk-d-demgphcscrm-kyc-xd-ea-em\
+      ...
+  snyk-remediation\
+    Invoke-SnykRemediation.ps1           <-- the script
+    remediation-config.json              <-- config
+    copilot-instructions.md              <-- master copy of skill
+
+================================================================================

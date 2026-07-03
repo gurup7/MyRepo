@@ -1,0 +1,592 @@
+<#
+.SYNOPSIS
+    Snyk CVE Bulk Remediation Script for Spring Boot Microservices.
+
+.DESCRIPTION
+    Automates the remediation of Snyk-reported dependency vulnerabilities across
+    multiple microservice repositories. Updates pom.xml version properties and
+    Dockerfile base images. Supports dry-run mode, build validation, and
+    automatic Git branch/commit/push/PR creation.
+
+.PARAMETER RootDir
+    Path to the parent directory containing all microservice repo folders.
+    Example: C:\work\repos
+
+.PARAMETER ConfigFile
+    Path to the JSON configuration file with repo list and version targets.
+    Default: .\remediation-config.json
+
+.PARAMETER BranchName
+    Git branch name to create for the remediation changes.
+    Default: fix/snyk-cve-remediation-YYYYMMDD
+
+.PARAMETER DryRun
+    If specified, shows what would change without modifying any files.
+
+.PARAMETER Validate
+    If specified, runs mvn clean compile after applying fixes.
+
+.PARAMETER CreatePR
+    If specified, creates a Pull Request using GitHub CLI (gh).
+
+.PARAMETER SkipGit
+    If specified, applies fixes but does not branch/commit/push.
+
+.EXAMPLE
+    # Preview changes (safe - no modifications)
+    .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -DryRun
+
+.EXAMPLE
+    # Apply fixes with build validation
+    .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -Validate
+
+.EXAMPLE
+    # Full automation: fix, commit, push, PR
+    .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -Validate -CreatePR
+
+.EXAMPLE
+    # Apply fixes only (no git operations)
+    .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -SkipGit
+#>
+
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(Mandatory=$true, HelpMessage="Root directory containing all microservice repos")]
+    [ValidateScript({ Test-Path $_ -PathType Container })]
+    [string]$RootDir,
+
+    [Parameter(Mandatory=$false)]
+    [string]$ConfigFile = ".\remediation-config.json",
+
+    [Parameter(Mandatory=$false)]
+    [string]$BranchName = "fix/snyk-cve-remediation-$(Get-Date -Format 'yyyyMMdd')",
+
+    [switch]$DryRun,
+
+    [switch]$Validate,
+
+    [switch]$CreatePR,
+
+    [switch]$SkipGit
+)
+
+# ============================================================
+# BANNER
+# ============================================================
+
+$banner = @"
+
+  ====================================================
+   SNYK CVE BULK REMEDIATION ORCHESTRATOR
+   Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+   Mode: $(if($DryRun){'DRY RUN (no changes)'}else{'LIVE'})
+   Root: $RootDir
+  ====================================================
+
+"@
+Write-Host $banner -ForegroundColor Cyan
+
+# ============================================================
+# CONFIGURATION - LOAD OR USE DEFAULTS
+# ============================================================
+
+# Default version targets (used if no config file found)
+$Boot3Versions = @{
+    "spring-boot.version"           = "3.5.13"
+    "spring-framework.version"      = "6.2.19"
+    "spring-retry.version"          = "2.0.13"
+    "micrometer.version"            = "1.15.12"
+    "micrometer-bom.version"        = "1.15.12"
+    "netty.version"                 = "4.1.135.Final"
+    "netty-bom.version"             = "4.1.135.Final"
+    "tomcat.version"                = "10.1.55"
+    "bouncycastle.version"          = "1.84"
+    "opentelemetry.version"         = "1.62.0"
+    "thymeleaf.version"             = "3.1.4.RELEASE"
+    "spring-kafka.version"          = "3.3.16"
+    "spring-data-bom.version"       = "3.5.12"
+    "neethi.version"                = "3.2.2"
+}
+
+$Boot4Versions = @{
+    "spring-boot.version"           = "4.0.7"
+    "spring-framework.version"      = "7.0.8"
+    "spring-retry.version"          = "2.0.13"
+    "micrometer.version"            = "1.16.6"
+    "micrometer-bom.version"        = "1.16.6"
+    "netty.version"                 = "4.1.135.Final"
+    "netty-bom.version"             = "4.1.135.Final"
+    "tomcat.version"                = "11.0.22"
+    "opentelemetry.version"         = "1.62.0"
+}
+
+$JavaVersion = "21"
+
+# Attempt to load config file for repo URLs
+$repoUrls = @{}
+if (Test-Path $ConfigFile) {
+    try {
+        $configData = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+        Write-Host "[CONFIG] Loaded: $ConfigFile" -ForegroundColor Green
+
+        # Override versions if present in config
+        if ($configData.VersionMatrix.Boot3) {
+            $Boot3Versions = @{}
+            $configData.VersionMatrix.Boot3.PSObject.Properties | ForEach-Object {
+                $Boot3Versions[$_.Name] = $_.Value
+            }
+        }
+        if ($configData.VersionMatrix.Boot4) {
+            $Boot4Versions = @{}
+            $configData.VersionMatrix.Boot4.PSObject.Properties | ForEach-Object {
+                $Boot4Versions[$_.Name] = $_.Value
+            }
+        }
+        if ($configData.JavaVersion) { $JavaVersion = $configData.JavaVersion }
+        if ($configData.Repos) {
+            foreach ($r in $configData.Repos) {
+                $repoUrls[$r.Name] = $r.Url
+            }
+        }
+    }
+    catch {
+        Write-Warning "Could not parse config file. Using defaults."
+    }
+}
+else {
+    Write-Host "[CONFIG] No config file found at $ConfigFile - using built-in defaults" -ForegroundColor Yellow
+}
+
+# ============================================================
+# FUNCTIONS
+# ============================================================
+
+function Get-BootMajorVersion {
+    <#
+    .SYNOPSIS
+        Detects whether a pom.xml belongs to a Spring Boot 3 or 4 project.
+    #>
+    param([string]$PomContent)
+
+    # Check parent version
+    if ($PomContent -match "spring-boot-starter-parent[\s\S]{0,150}<version>\s*4\.") {
+        return 4
+    }
+    # Check spring framework property
+    if ($PomContent -match "<spring-framework\.version>\s*7\.") {
+        return 4
+    }
+    # Check spring-boot.version property
+    if ($PomContent -match "<spring-boot\.version>\s*4\.") {
+        return 4
+    }
+    return 3
+}
+
+function Update-VersionProperty {
+    <#
+    .SYNOPSIS
+        Updates a single version property in pom.xml content.
+        Returns the updated content and a description of what changed.
+    #>
+    param(
+        [string]$Content,
+        [string]$PropertyName,
+        [string]$TargetVersion
+    )
+
+    $result = @{ Content = $Content; Change = $null }
+
+    # Pattern: <property.name>version</property.name>
+    $pattern = "(<${PropertyName}>)([\s\S]*?)(</${PropertyName}>)"
+
+    if ($Content -match $pattern) {
+        $currentVersion = $Matches[2].Trim()
+        if ($currentVersion -ne $TargetVersion) {
+            $result.Content = $Content -replace $pattern, "`${1}${TargetVersion}`${3}"
+            $result.Change = "${PropertyName}: ${currentVersion} -> ${TargetVersion}"
+        }
+    }
+
+    return $result
+}
+
+function Update-ParentPomVersion {
+    <#
+    .SYNOPSIS
+        Updates the Spring Boot parent POM version.
+    #>
+    param(
+        [string]$Content,
+        [string]$TargetVersion
+    )
+
+    $result = @{ Content = $Content; Change = $null }
+
+    # Match the version within <parent> block containing spring-boot-starter-parent
+    $pattern = "(<parent>[\s\S]*?<artifactId>spring-boot-starter-parent</artifactId>[\s\S]*?<version>)([\d\.\w\-]+)(</version>[\s\S]*?</parent>)"
+
+    if ($Content -match $pattern) {
+        $currentVersion = $Matches[2]
+        if ($currentVersion -ne $TargetVersion) {
+            $result.Content = $Content -replace $pattern, "`${1}${TargetVersion}`${3}"
+            $result.Change = "Parent spring-boot-starter-parent: ${currentVersion} -> ${TargetVersion}"
+        }
+    }
+
+    return $result
+}
+
+function Update-DockerfileJdk {
+    <#
+    .SYNOPSIS
+        Updates Dockerfile base images from JDK 17 to JDK 21.
+    #>
+    param([string]$FilePath)
+
+    $content = Get-Content $FilePath -Raw
+    $original = $content
+    $changes = @()
+
+    # Pattern replacements for common base images
+    $replacements = @(
+        @{ Find = "jdk17";            Replace = "jdk21" }
+        @{ Find = "openjdk:17";       Replace = "eclipse-temurin:21-jre-jammy" }
+        @{ Find = "eclipse-temurin:17-jre"; Replace = "eclipse-temurin:21-jre" }
+        @{ Find = "eclipse-temurin:17-jdk"; Replace = "eclipse-temurin:21-jdk" }
+        @{ Find = "eclipse-temurin:17";     Replace = "eclipse-temurin:21" }
+        @{ Find = "amazoncorretto:17";      Replace = "amazoncorretto:21" }
+        @{ Find = "JAVA_VERSION=17";        Replace = "JAVA_VERSION=21" }
+        @{ Find = "JAVA_VERSION 17";        Replace = "JAVA_VERSION 21" }
+    )
+
+    foreach ($r in $replacements) {
+        if ($content.Contains($r.Find)) {
+            $content = $content.Replace($r.Find, $r.Replace)
+            $changes += "Dockerfile: $($r.Find) -> $($r.Replace)"
+        }
+    }
+
+    if ($content -ne $original) {
+        return @{ Content = $content; Changes = $changes; Modified = $true }
+    }
+    return @{ Content = $content; Changes = @(); Modified = $false }
+}
+
+# ============================================================
+# MAIN PROCESSING LOOP
+# ============================================================
+
+# Discover repo directories
+$repoDirs = Get-ChildItem -Path $RootDir -Directory | Where-Object {
+    # Only process directories that contain a pom.xml
+    Test-Path (Join-Path $_.FullName "pom.xml")
+}
+
+if ($repoDirs.Count -eq 0) {
+    Write-Host "[ERROR] No directories with pom.xml found under $RootDir" -ForegroundColor Red
+    Write-Host "        Make sure -RootDir points to the parent folder of your repos." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "[SCAN] Found $($repoDirs.Count) repos with pom.xml:" -ForegroundColor Cyan
+$repoDirs | ForEach-Object { Write-Host "        - $($_.Name)" -ForegroundColor White }
+Write-Host ""
+
+# Results collection
+$results = @()
+$startTime = Get-Date
+
+foreach ($repoDir in $repoDirs) {
+    Write-Host "--------------------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host "  REPO: $($repoDir.Name)" -ForegroundColor White
+    Write-Host "--------------------------------------------------------------" -ForegroundColor DarkGray
+
+    $repoPath = $repoDir.FullName
+    $allChanges = @()
+
+    # --- GIT: Create branch ---
+    if (-not $SkipGit -and -not $DryRun) {
+        Push-Location $repoPath
+        try {
+            # Ensure we're on a clean state
+            $gitStatus = git status --porcelain 2>$null
+            if ($gitStatus) {
+                Write-Host "  [WARN] Repo has uncommitted changes. Stashing..." -ForegroundColor Yellow
+                git stash 2>$null
+            }
+
+            # Fetch and create branch
+            git fetch origin 2>$null
+            $branchExists = git branch --list $BranchName 2>$null
+            if ($branchExists) {
+                git checkout $BranchName 2>$null
+            }
+            else {
+                git checkout -b $BranchName 2>$null
+            }
+            Write-Host "  [GIT] Branch: $BranchName" -ForegroundColor DarkCyan
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    # --- FIX: Process all pom.xml files ---
+    $pomFiles = Get-ChildItem -Path $repoPath -Filter "pom.xml" -Recurse -File
+
+    foreach ($pomFile in $pomFiles) {
+        $pomContent = Get-Content $pomFile.FullName -Raw
+        $pomOriginal = $pomContent
+
+        # Determine project type
+        $bootMajor = Get-BootMajorVersion -PomContent $pomContent
+        $versionTargets = if ($bootMajor -eq 4) { $Boot4Versions } else { $Boot3Versions }
+
+        $relativePath = $pomFile.FullName.Replace($repoPath, "").TrimStart("\", "/")
+
+        # Update parent POM version
+        $parentTarget = $versionTargets["spring-boot.version"]
+        if ($parentTarget) {
+            $parentResult = Update-ParentPomVersion -Content $pomContent -TargetVersion $parentTarget
+            if ($parentResult.Change) {
+                $pomContent = $parentResult.Content
+                $allChanges += "  [$relativePath] $($parentResult.Change)"
+            }
+        }
+
+        # Update version properties
+        foreach ($entry in $versionTargets.GetEnumerator()) {
+            if ($entry.Key -eq "spring-boot.version") { continue } # Already handled as parent
+
+            $propResult = Update-VersionProperty -Content $pomContent `
+                -PropertyName $entry.Key -TargetVersion $entry.Value
+            if ($propResult.Change) {
+                $pomContent = $propResult.Content
+                $allChanges += "  [$relativePath] $($propResult.Change)"
+            }
+        }
+
+        # Update Java version properties
+        foreach ($javaProp in @("java.version", "maven.compiler.source", "maven.compiler.target")) {
+            $javaResult = Update-VersionProperty -Content $pomContent `
+                -PropertyName $javaProp -TargetVersion $JavaVersion
+            if ($javaResult.Change) {
+                $pomContent = $javaResult.Content
+                $allChanges += "  [$relativePath] $($javaResult.Change)"
+            }
+        }
+
+        # Write changes
+        if ($pomContent -ne $pomOriginal) {
+            if ($DryRun) {
+                Write-Host "  [DRY RUN] Would modify: $relativePath" -ForegroundColor Magenta
+            }
+            else {
+                Set-Content -Path $pomFile.FullName -Value $pomContent -NoNewline -Encoding UTF8
+            }
+        }
+    }
+
+    # --- FIX: Process Dockerfiles ---
+    $dockerFiles = Get-ChildItem -Path $repoPath -Filter "Dockerfile*" -Recurse -File
+
+    foreach ($df in $dockerFiles) {
+        $dfResult = Update-DockerfileJdk -FilePath $df.FullName
+        if ($dfResult.Modified) {
+            $relativePath = $df.FullName.Replace($repoPath, "").TrimStart("\", "/")
+            $dfResult.Changes | ForEach-Object { $allChanges += "  [$relativePath] $_" }
+
+            if ($DryRun) {
+                Write-Host "  [DRY RUN] Would modify: $relativePath" -ForegroundColor Magenta
+            }
+            else {
+                Set-Content -Path $df.FullName -Value $dfResult.Content -NoNewline -Encoding UTF8
+            }
+        }
+    }
+
+    # --- DISPLAY CHANGES ---
+    if ($allChanges.Count -gt 0) {
+        Write-Host "  Changes ($($allChanges.Count)):" -ForegroundColor Yellow
+        $allChanges | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
+    }
+    else {
+        Write-Host "  [NO CHANGES] Already at target versions" -ForegroundColor DarkGray
+    }
+
+    # --- VALIDATE: Build check ---
+    $buildStatus = "Skipped"
+    if ($Validate -and -not $DryRun -and $allChanges.Count -gt 0) {
+        Write-Host "  [BUILD] Running mvn clean compile..." -ForegroundColor Cyan -NoNewline
+        Push-Location $repoPath
+        try {
+            $buildOutput = & mvn clean compile -DskipTests -q 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host " PASS" -ForegroundColor Green
+                $buildStatus = "PASS"
+            }
+            else {
+                Write-Host " FAIL" -ForegroundColor Red
+                $buildStatus = "FAIL"
+                # Save build error for debugging
+                $errorLog = Join-Path $repoPath "build-error.log"
+                $buildOutput | Out-File $errorLog -Encoding UTF8
+                Write-Host "  [LOG] Build errors saved to: build-error.log" -ForegroundColor Red
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    # --- GIT: Commit and Push ---
+    $prStatus = "N/A"
+    if (-not $SkipGit -and -not $DryRun -and $allChanges.Count -gt 0) {
+        Push-Location $repoPath
+        try {
+            # Stage changes
+            git add "*.xml" 2>$null
+            git add "Dockerfile*" 2>$null
+            git add "**/pom.xml" 2>$null
+            git add "**/Dockerfile*" 2>$null
+
+            # Commit
+            $commitMsg = "fix: remediate Snyk CVEs - upgrade dependencies and JDK to 21`n`n$($allChanges.Count) version changes applied.`nBranch: $BranchName"
+            git commit -m $commitMsg 2>$null
+
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  [GIT] Committed" -ForegroundColor Green
+
+                # Push
+                git push -u origin $BranchName 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  [GIT] Pushed to origin/$BranchName" -ForegroundColor Green
+                    $prStatus = "Pushed"
+                }
+                else {
+                    Write-Host "  [GIT] Push failed - check credentials" -ForegroundColor Red
+                    $prStatus = "Push failed"
+                }
+            }
+            else {
+                Write-Host "  [GIT] Nothing to commit (may already be committed)" -ForegroundColor DarkGray
+            }
+
+            # Create PR
+            if ($CreatePR -and $prStatus -eq "Pushed") {
+                $ghAvailable = Get-Command gh -ErrorAction SilentlyContinue
+                if ($ghAvailable) {
+                    $prBody = @"
+## Snyk CVE Remediation
+
+**Automated vulnerability fix** applied by remediation script.
+
+### Changes Applied ($($allChanges.Count) total)
+$($allChanges -join "`n")
+
+### Validation
+- Build status: $buildStatus
+- Branch: $BranchName
+
+### Action Required
+- [ ] Review dependency changes
+- [ ] Confirm CI/CD pipeline passes
+- [ ] Re-run Snyk scan to verify CVE resolution
+"@
+                    gh pr create `
+                        --title "fix: Snyk CVE remediation + JDK 21 upgrade" `
+                        --body $prBody `
+                        --base main 2>$null
+
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "  [PR] Created successfully" -ForegroundColor Green
+                        $prStatus = "PR Created"
+                    }
+                    else {
+                        # Try with master branch
+                        gh pr create `
+                            --title "fix: Snyk CVE remediation + JDK 21 upgrade" `
+                            --body $prBody `
+                            --base master 2>$null
+                        if ($LASTEXITCODE -eq 0) {
+                            $prStatus = "PR Created"
+                        }
+                        else {
+                            $prStatus = "PR failed (create manually)"
+                        }
+                    }
+                }
+                else {
+                    Write-Host "  [PR] GitHub CLI (gh) not available - create PR manually" -ForegroundColor Yellow
+                    $prStatus = "Manual (no gh CLI)"
+                }
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    # --- COLLECT RESULT ---
+    $results += [PSCustomObject]@{
+        Repository  = $repoDir.Name
+        BootVersion = "Boot $bootMajor"
+        Changes     = $allChanges.Count
+        Build       = $buildStatus
+        PR          = $prStatus
+    }
+
+    Write-Host ""
+}
+
+# ============================================================
+# SUMMARY REPORT
+# ============================================================
+
+$endTime = Get-Date
+$duration = $endTime - $startTime
+$totalChanges = ($results | Measure-Object -Property Changes -Sum).Sum
+
+Write-Host ""
+Write-Host "==============================================================" -ForegroundColor Cyan
+Write-Host "  REMEDIATION SUMMARY" -ForegroundColor Cyan
+Write-Host "==============================================================" -ForegroundColor Cyan
+Write-Host ""
+
+$results | Format-Table -AutoSize
+
+Write-Host "--------------------------------------------------------------" -ForegroundColor DarkGray
+Write-Host "  Total repositories processed: $($results.Count)" -ForegroundColor White
+Write-Host "  Total version changes:        $totalChanges" -ForegroundColor Green
+Write-Host "  Duration:                     $($duration.ToString('mm\:ss'))" -ForegroundColor White
+Write-Host "  Mode:                         $(if($DryRun){'DRY RUN'}else{'LIVE'})" -ForegroundColor $(if($DryRun){'Yellow'}else{'Green'})
+Write-Host "--------------------------------------------------------------" -ForegroundColor DarkGray
+
+# Export CSV report
+$reportDir = Split-Path $RootDir -Parent
+if (-not $reportDir) { $reportDir = $RootDir }
+$reportPath = Join-Path $reportDir "snyk-remediation-report-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv"
+
+$results | Export-Csv -Path $reportPath -NoTypeInformation -Encoding UTF8
+Write-Host ""
+Write-Host "  Report saved: $reportPath" -ForegroundColor Cyan
+Write-Host ""
+
+# Final guidance
+if ($DryRun) {
+    Write-Host "  This was a DRY RUN. No files were modified." -ForegroundColor Yellow
+    Write-Host "  To apply changes, re-run without the -DryRun flag." -ForegroundColor Yellow
+}
+elseif ($results | Where-Object { $_.Build -eq "FAIL" }) {
+    Write-Host "  [WARNING] Some builds failed. Check build-error.log in those repos." -ForegroundColor Red
+    Write-Host "  Use Copilot Chat to investigate: @workspace Why does the build fail?" -ForegroundColor Yellow
+}
+else {
+    Write-Host "  All done. Next steps:" -ForegroundColor Green
+    Write-Host "    1. Review the PRs" -ForegroundColor White
+    Write-Host "    2. Merge after CI passes" -ForegroundColor White
+    Write-Host "    3. Re-run Snyk scan to confirm resolution" -ForegroundColor White
+}
+
+Write-Host ""

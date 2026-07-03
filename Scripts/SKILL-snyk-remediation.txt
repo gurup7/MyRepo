@@ -1,0 +1,228 @@
+# Snyk Vulnerability Remediation Skill
+
+## Purpose
+
+This file instructs GitHub Copilot Chat on how to remediate Snyk-reported
+dependency vulnerabilities in Spring Boot microservices. When you ask Copilot
+to fix vulnerabilities, it reads this file and applies the correct versions
+automatically.
+
+## Scope
+
+- Maven pom.xml dependency version upgrades
+- Dockerfile base image upgrades (JDK 17 to 21)
+- Does NOT modify Java source code
+- Does NOT add or remove dependencies
+
+## How to Invoke
+
+Open this repo in VS Code and use any of these prompts in Copilot Chat:
+
+```
+@workspace Fix Snyk vulnerabilities
+@workspace Upgrade dependencies to secure versions
+@workspace Apply CVE remediation
+@workspace Update to patched Spring Boot version
+```
+
+---
+
+## Decision Logic
+
+### Step 1: Identify Project Type
+
+Check the `<parent>` block in pom.xml:
+- If parent version starts with `3.x` → This is a **Spring Boot 3** project (Spring Framework 6.x)
+- If parent version starts with `4.x` → This is a **Spring Boot 4** project (Spring Framework 7.x)
+- If no parent, check `<spring-framework.version>` property:
+  - `6.x` → treat as Boot 3
+  - `7.x` → treat as Boot 4
+
+### Step 2: Apply Version Governance Matrix
+
+#### For Spring Boot 3.x Projects (Spring Framework 6.x)
+
+| Property Name | Vulnerable Versions | Target Version |
+|---|---|---|
+| spring-boot parent version | < 3.5.13 | **3.5.13** |
+| spring-framework.version | < 6.2.19 | **6.2.19** |
+| spring-retry.version | < 2.0.13 | **2.0.13** |
+| micrometer.version | < 1.15.12 | **1.15.12** |
+| netty.version | < 4.1.135.Final | **4.1.135.Final** |
+| netty-bom.version | < 4.1.135.Final | **4.1.135.Final** |
+| tomcat.version | < 10.1.55 | **10.1.55** |
+| bouncycastle.version | < 1.84 | **1.84** |
+| opentelemetry.version | < 1.62.0 | **1.62.0** |
+| thymeleaf.version | < 3.1.4.RELEASE | **3.1.4.RELEASE** |
+| spring-kafka.version | < 3.3.16 | **3.3.16** |
+| spring-data-commons.version | < 3.5.12 | **3.5.12** |
+| neethi.version | < 3.2.2 | **3.2.2** |
+| java.version | 17 | **21** |
+
+#### For Spring Boot 4.x Projects (Spring Framework 7.x)
+
+| Property Name | Vulnerable Versions | Target Version |
+|---|---|---|
+| spring-boot parent version | < 4.0.7 | **4.0.7** |
+| spring-framework.version | < 7.0.8 | **7.0.8** |
+| spring-retry.version | < 2.0.13 | **2.0.13** |
+| micrometer.version | < 1.16.6 | **1.16.6** |
+| netty.version | < 4.1.135.Final | **4.1.135.Final** |
+| netty-bom.version | < 4.1.135.Final | **4.1.135.Final** |
+| tomcat.version | < 11.0.22 | **11.0.22** |
+| opentelemetry.version | < 1.62.0 | **1.62.0** |
+| java.version | 17 | **21** |
+
+### Step 3: Fix Strategy (Priority Order)
+
+Apply fixes in this order — higher priority fixes resolve more CVEs at once:
+
+1. **Upgrade the parent POM version**
+   ```xml
+   <parent>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-parent</artifactId>
+       <version>3.5.13</version>  <!-- or 4.0.7 for Boot 4 -->
+   </parent>
+   ```
+   This single change pulls in patched versions of Spring Framework, Tomcat,
+   Micrometer, and many other transitive dependencies.
+
+2. **Override version properties**
+   In the `<properties>` section, update or add:
+   ```xml
+   <properties>
+       <java.version>21</java.version>
+       <spring-retry.version>2.0.13</spring-retry.version>
+       <micrometer.version>1.15.12</micrometer.version>
+       <netty.version>4.1.135.Final</netty.version>
+       <!-- Add others as needed -->
+   </properties>
+   ```
+
+3. **Add dependencyManagement overrides** (only if property doesn't exist)
+   ```xml
+   <dependencyManagement>
+       <dependencies>
+           <dependency>
+               <groupId>io.micrometer</groupId>
+               <artifactId>micrometer-core</artifactId>
+               <version>1.15.12</version>
+           </dependency>
+       </dependencies>
+   </dependencyManagement>
+   ```
+
+4. **Update Dockerfile base image**
+   ```dockerfile
+   # Before
+   FROM tomcat:10.1-jdk17-temurin-jammy
+   # After
+   FROM tomcat:10.1-jdk21-temurin-jammy
+   ```
+
+### Step 4: Where to Make Changes
+
+Priority for where to set the version:
+1. `<properties>` section — preferred, cleanest approach
+2. `<parent><version>` — for Spring Boot parent
+3. `<dependencyManagement>` — for explicit overrides of transitive deps
+4. **NEVER** change version directly in `<dependencies>` if a property already controls it
+
+### Step 5: Validation Checklist
+
+After applying all fixes, confirm:
+- [ ] `mvn clean compile -DskipTests` passes without errors
+- [ ] `mvn dependency:tree` shows no vulnerable versions remaining
+- [ ] Dockerfile builds successfully with jdk21 base image
+- [ ] No new deprecation warnings related to Java 21 migration
+
+---
+
+## Edge Cases and Special Handling
+
+### Bouncycastle ArtifactId Change
+At version 1.78+, the artifactId changed:
+- Old: `bcprov-jdk15on`
+- New: `bcprov-jdk18on`
+If the project uses `bcprov-jdk15on`, change BOTH the artifactId and version:
+```xml
+<dependency>
+    <groupId>org.bouncycastle</groupId>
+    <artifactId>bcprov-jdk18on</artifactId>
+    <version>1.84</version>
+</dependency>
+```
+
+### Spring Boot Devtools
+If `spring-boot-devtools` is flagged by Snyk, it is typically test/dev-scoped only.
+Lower priority — fix other CVEs first.
+
+### Transitive Dependencies Not Controlled by Properties
+If `mvn dependency:tree` still shows a vulnerable version after property update,
+the dependency is pulled transitively by another library. Add an explicit
+`<dependencyManagement>` entry to force the version.
+
+### Netty Modules
+Netty has multiple modules (netty-handler, netty-codec, netty-codec-http, etc.).
+They are all controlled by `<netty.version>` property or the netty-bom. Update
+the single property/BOM and all modules follow.
+
+### Multi-Module Projects
+If the project has a parent pom.xml with child modules:
+- Make version changes ONLY in the parent pom.xml
+- Child modules inherit automatically
+- Do NOT duplicate version overrides in child poms
+
+---
+
+## CVEs Addressed by This Skill
+
+| CVE | Library | Fixed By |
+|---|---|---|
+| CVE-2026-41850 | spring-expression | Spring Framework 6.2.19 / 7.0.8 |
+| CVE-2026-41839 | spring-web | Spring Framework 6.2.19 / 7.0.8 |
+| CVE-2026-41851 | spring-core | Spring Framework 6.2.19 / 7.0.8 |
+| CVE-2026-41846 | spring-webmvc | Spring Framework 6.2.19 / 7.0.8 |
+| CVE-2026-41710 | spring-retry | spring-retry 2.0.13 |
+| CVE-2026-40984 | micrometer-core | micrometer 1.15.12 / 1.16.6 |
+| CVE-2026-42498 | tomcat-embed-websocket | tomcat 10.1.55 / 11.0.22 |
+| CVE-2026-41284 | tomcat-embed-core | tomcat 10.1.55 / 11.0.22 |
+| CVE-2026-45416 | netty-handler | netty 4.1.135.Final |
+| CVE-2026-42587 | netty-codec | netty 4.1.133.Final+ |
+| CVE-2025-14813 | bouncycastle | bouncycastle 1.84 |
+| CVE-2026-45292 | opentelemetry-api | opentelemetry 1.62.0 |
+| CVE-2026-40477 | thymeleaf | thymeleaf 3.1.4.RELEASE |
+| CVE-2026-41726 | spring-kafka | spring-kafka 3.3.16 / 4.0.6 |
+| CVE-2026-41695 | spring-data-commons | spring-data 3.5.12 |
+| CVE-2026-42403 | neethi | neethi 3.2.2 |
+| CVE-2026-40975 | spring-boot | Spring Boot 3.5.13 / 4.0.7 |
+| CVE-2026-40972 | spring-boot-devtools | Spring Boot 3.5.13 / 4.0.7 |
+| CVE-2026-40974 | spring-boot-autoconfigure | Spring Boot 3.5.13 / 4.0.7 |
+| CVE-2026-41901 | thymeleaf-spring6 | thymeleaf 3.1.4.RELEASE |
+| CVE-2026-41855 | spring-jms | Spring Framework 6.2.19 / 7.0.8 |
+| CVE-2026-42581 | netty-codec-http | netty 4.1.133.Final+ |
+
+---
+
+## Microservices Covered
+
+This skill is configured for the following services (CHUB platform):
+1. aut-d-partyauth-xd-ea-em
+2. xp-d-issdvcadmin-card-xd-ea-em
+3. cus-d-custcnst-agmt-xd-ea-em
+4. cst-d-custprofile-xd-ea-em
+5. aim-d-channelact-cde-xd-ea-em
+6. rsk-d-demgphcscrm-kyc-xd-ea-em
+
+---
+
+## Maintenance
+
+When new Snyk findings appear:
+1. Update the Version Governance Matrix table above with new target versions
+2. Add new CVE entries to the CVEs table
+3. Commit the updated skill file
+4. Re-run Copilot Chat or the automation script
+
+This file is the single source of truth for approved dependency versions.
