@@ -1,0 +1,17 @@
+Step 1: Add Snyk to PATH (one-time setup)
+Open PowerShell and run:
+
+powershell
+
+$snykPath = "$env:USERPROFILE\AppData\Local\CitiSoftware\snyk"
+$env:Path += ";$snykPath"
+To make it permanent:
+
+powershell
+
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\AppData\Local\CitiSoftware\snyk", "User")
+Step 2: Verify Snyk Works
+powershell
+
+snyk --version
+If you see a version number, you're good.
