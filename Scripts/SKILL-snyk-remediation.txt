@@ -3,14 +3,14 @@
 ## Purpose
 
 This file instructs GitHub Copilot Chat on how to remediate Snyk-reported
-dependency vulnerabilities in Spring Boot microservices. When you ask Copilot
-to fix vulnerabilities, it reads this file and applies the correct versions
-automatically.
+dependency vulnerabilities in Citi CHUB Spring Boot microservices. When you
+ask Copilot to fix vulnerabilities, it reads this file and applies the
+correct fix strategy.
 
 ## Scope
 
 - Maven pom.xml dependency version upgrades
-- Dockerfile base image upgrades (JDK 17 to 21)
+- JDK 17 to 21 migration (properties + compiler plugin)
 - Does NOT modify Java source code
 - Does NOT add or remove dependencies
 
@@ -22,161 +22,283 @@ Open this repo in VS Code and use any of these prompts in Copilot Chat:
 @workspace Fix Snyk vulnerabilities
 @workspace Upgrade dependencies to secure versions
 @workspace Apply CVE remediation
-@workspace Update to patched Spring Boot version
+@workspace Migrate to JDK 21
 ```
 
 ---
 
-## Decision Logic
+## Project Structure (Citi CHUB Microservices)
 
-### Step 1: Identify Project Type
+These microservices use a **custom Citi parent BOM**, NOT the standard
+Spring Boot parent. This is critical for the fix strategy.
 
-Check the `<parent>` block in pom.xml:
-- If parent version starts with `3.x` → This is a **Spring Boot 3** project (Spring Framework 6.x)
-- If parent version starts with `4.x` → This is a **Spring Boot 4** project (Spring Framework 7.x)
-- If no parent, check `<spring-framework.version>` property:
-  - `6.x` → treat as Boot 3
-  - `7.x` → treat as Boot 4
-
-### Step 2: Apply Version Governance Matrix
-
-#### For Spring Boot 3.x Projects (Spring Framework 6.x)
-
-| Property Name | Vulnerable Versions | Target Version |
-|---|---|---|
-| spring-boot parent version | < 3.5.13 | **3.5.13** |
-| spring-framework.version | < 6.2.19 | **6.2.19** |
-| spring-retry.version | < 2.0.13 | **2.0.13** |
-| micrometer.version | < 1.15.12 | **1.15.12** |
-| netty.version | < 4.1.135.Final | **4.1.135.Final** |
-| netty-bom.version | < 4.1.135.Final | **4.1.135.Final** |
-| tomcat.version | < 10.1.55 | **10.1.55** |
-| bouncycastle.version | < 1.84 | **1.84** |
-| opentelemetry.version | < 1.62.0 | **1.62.0** |
-| thymeleaf.version | < 3.1.4.RELEASE | **3.1.4.RELEASE** |
-| spring-kafka.version | < 3.3.16 | **3.3.16** |
-| spring-data-commons.version | < 3.5.12 | **3.5.12** |
-| neethi.version | < 3.2.2 | **3.2.2** |
-| java.version | 17 | **21** |
-
-#### For Spring Boot 4.x Projects (Spring Framework 7.x)
-
-| Property Name | Vulnerable Versions | Target Version |
-|---|---|---|
-| spring-boot parent version | < 4.0.7 | **4.0.7** |
-| spring-framework.version | < 7.0.8 | **7.0.8** |
-| spring-retry.version | < 2.0.13 | **2.0.13** |
-| micrometer.version | < 1.16.6 | **1.16.6** |
-| netty.version | < 4.1.135.Final | **4.1.135.Final** |
-| netty-bom.version | < 4.1.135.Final | **4.1.135.Final** |
-| tomcat.version | < 11.0.22 | **11.0.22** |
-| opentelemetry.version | < 1.62.0 | **1.62.0** |
-| java.version | 17 | **21** |
-
-### Step 3: Fix Strategy (Priority Order)
-
-Apply fixes in this order — higher priority fixes resolve more CVEs at once:
-
-1. **Upgrade the parent POM version**
-   ```xml
-   <parent>
-       <groupId>org.springframework.boot</groupId>
-       <artifactId>spring-boot-starter-parent</artifactId>
-       <version>3.5.13</version>  <!-- or 4.0.7 for Boot 4 -->
-   </parent>
-   ```
-   This single change pulls in patched versions of Spring Framework, Tomcat,
-   Micrometer, and many other transitive dependencies.
-
-2. **Override version properties**
-   In the `<properties>` section, update or add:
-   ```xml
-   <properties>
-       <java.version>21</java.version>
-       <spring-retry.version>2.0.13</spring-retry.version>
-       <micrometer.version>1.15.12</micrometer.version>
-       <netty.version>4.1.135.Final</netty.version>
-       <!-- Add others as needed -->
-   </properties>
-   ```
-
-3. **Add dependencyManagement overrides** (only if property doesn't exist)
-   ```xml
-   <dependencyManagement>
-       <dependencies>
-           <dependency>
-               <groupId>io.micrometer</groupId>
-               <artifactId>micrometer-core</artifactId>
-               <version>1.15.12</version>
-           </dependency>
-       </dependencies>
-   </dependencyManagement>
-   ```
-
-4. **Update Dockerfile base image**
-   ```dockerfile
-   # Before
-   FROM tomcat:10.1-jdk17-temurin-jammy
-   # After
-   FROM tomcat:10.1-jdk21-temurin-jammy
-   ```
-
-### Step 4: Where to Make Changes
-
-Priority for where to set the version:
-1. `<properties>` section — preferred, cleanest approach
-2. `<parent><version>` — for Spring Boot parent
-3. `<dependencyManagement>` — for explicit overrides of transitive deps
-4. **NEVER** change version directly in `<dependencies>` if a property already controls it
-
-### Step 5: Validation Checklist
-
-After applying all fixes, confirm:
-- [ ] `mvn clean compile -DskipTests` passes without errors
-- [ ] `mvn dependency:tree` shows no vulnerable versions remaining
-- [ ] Dockerfile builds successfully with jdk21 base image
-- [ ] No new deprecation warnings related to Java 21 migration
-
----
-
-## Edge Cases and Special Handling
-
-### Bouncycastle ArtifactId Change
-At version 1.78+, the artifactId changed:
-- Old: `bcprov-jdk15on`
-- New: `bcprov-jdk18on`
-If the project uses `bcprov-jdk15on`, change BOTH the artifactId and version:
 ```xml
-<dependency>
-    <groupId>org.bouncycastle</groupId>
-    <artifactId>bcprov-jdk18on</artifactId>
-    <version>1.84</version>
-</dependency>
+<parent>
+    <groupId>com.citi.169073.ccp.rel</groupId>
+    <artifactId>ccp-spring-boot-starter-parent-master</artifactId>
+    <version>2026.6.13.RELEASE</version>
+</parent>
 ```
 
-### Spring Boot Devtools
-If `spring-boot-devtools` is flagged by Snyk, it is typically test/dev-scoped only.
-Lower priority — fix other CVEs first.
-
-### Transitive Dependencies Not Controlled by Properties
-If `mvn dependency:tree` still shows a vulnerable version after property update,
-the dependency is pulled transitively by another library. Add an explicit
-`<dependencyManagement>` entry to force the version.
-
-### Netty Modules
-Netty has multiple modules (netty-handler, netty-codec, netty-codec-http, etc.).
-They are all controlled by `<netty.version>` property or the netty-bom. Update
-the single property/BOM and all modules follow.
-
-### Multi-Module Projects
-If the project has a parent pom.xml with child modules:
-- Make version changes ONLY in the parent pom.xml
-- Child modules inherit automatically
-- Do NOT duplicate version overrides in child poms
+### Key POM Characteristics:
+- Parent BOM: `ccp-spring-boot-starter-parent-master` (Citi's internal BOM)
+- Packaging: WAR (deployed to external Tomcat)
+- Most Spring/Boot dependency versions are inherited from the parent BOM
+- Some dependencies have explicit versions in the POM
+- JDK version is set in `<properties>` AND in `maven-compiler-plugin` config
+- Tomcat is excluded from spring-boot-starter-web, then re-added as provided
 
 ---
 
-## CVEs Addressed by This Skill
+## Fix Strategy (Priority Order)
+
+### Priority 1: Upgrade the Parent BOM Version
+
+The Citi parent BOM (`ccp-spring-boot-starter-parent-master`) manages versions
+for Spring Framework, Spring Boot, Micrometer, Netty, Tomcat, and other core
+dependencies. Upgrading this ONE version fixes the majority of Snyk CVEs.
+
+```xml
+<parent>
+    <groupId>com.citi.169073.ccp.rel</groupId>
+    <artifactId>ccp-spring-boot-starter-parent-master</artifactId>
+    <version>LATEST_AVAILABLE_VERSION</version>  <!-- Check Citi Nexus for latest -->
+</parent>
+```
+
+**Action:** Check Citi's internal Nexus/Artifactory for the latest version of
+`ccp-spring-boot-starter-parent-master` that includes patched Spring 6.2.19+
+or Spring 7.0.8+ dependencies.
+
+**If no newer parent BOM is available**, proceed to Priority 2.
+
+### Priority 2: Add Version Properties to Override Parent BOM
+
+If the parent BOM hasn't been updated yet, you can force specific versions
+by adding properties that the parent BOM recognizes:
+
+```xml
+<properties>
+    <!-- Existing properties... -->
+    
+    <!-- ADD THESE to override parent BOM versions -->
+    <spring-framework.version>6.2.19</spring-framework.version>
+    <spring-retry.version>2.0.13</spring-retry.version>
+    <micrometer.version>1.15.12</micrometer.version>
+    <netty.version>4.1.135.Final</netty.version>
+    <tomcat.version>10.1.55</tomcat.version>
+</properties>
+```
+
+NOTE: This only works if the parent BOM is configured to respect these property
+names. Verify by running `mvn dependency:tree` after adding them. If versions
+don't change, use Priority 3 instead.
+
+### Priority 3: Add dependencyManagement Overrides
+
+If property overrides don't work, explicitly force versions using
+`<dependencyManagement>`. Add this block AFTER the `<parent>` and BEFORE
+`<dependencies>`:
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <!-- Spring Framework CVE fixes -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-expression</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-beans</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-aop</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jms</artifactId>
+            <version>6.2.19</version>
+        </dependency>
+
+        <!-- Spring Retry CVE fix -->
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+            <version>2.0.13</version>
+        </dependency>
+
+        <!-- Micrometer CVE fix -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>1.15.12</version>
+        </dependency>
+
+        <!-- Netty CVE fixes -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-handler</artifactId>
+            <version>4.1.135.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-codec</artifactId>
+            <version>4.1.135.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-codec-http</artifactId>
+            <version>4.1.135.Final</version>
+        </dependency>
+
+        <!-- Tomcat CVE fixes (if using embedded) -->
+        <dependency>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-core</artifactId>
+            <version>10.1.55</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-websocket</artifactId>
+            <version>10.1.55</version>
+        </dependency>
+
+        <!-- OpenTelemetry CVE fix -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <version>1.62.0</version>
+        </dependency>
+
+        <!-- Thymeleaf CVE fix (if used) -->
+        <dependency>
+            <groupId>org.thymeleaf</groupId>
+            <artifactId>thymeleaf</artifactId>
+            <version>3.1.4.RELEASE</version>
+        </dependency>
+        <dependency>
+            <groupId>org.thymeleaf</groupId>
+            <artifactId>thymeleaf-spring6</artifactId>
+            <version>3.1.4.RELEASE</version>
+        </dependency>
+
+        <!-- Spring Kafka CVE fix (if used) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+            <version>3.3.16</version>
+        </dependency>
+
+        <!-- Bouncycastle CVE fix (if used) -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.84</version>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
+### Priority 4: Upgrade JDK 17 to 21
+
+JDK version is set in THREE places in these POMs. All three must be updated:
+
+**Place 1 — Properties block:**
+```xml
+<properties>
+    <java.version>21</java.version>
+    <maven.compiler.target>21</maven.compiler.target>
+    <maven.compiler.source>21</maven.compiler.source>
+</properties>
+```
+
+**Place 2 — maven-compiler-plugin configuration:**
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <version>3.15.0</version>
+    <configuration>
+        <source>21</source>
+        <target>21</target>
+    </configuration>
+</plugin>
+```
+
+**Place 3 — Dockerfile base image:**
+```dockerfile
+# Change from jdk17 to jdk21
+FROM tomcat:10.1-jdk21-temurin-jammy
+```
+
+---
+
+## Dependencies With Explicit Versions (May Need Direct Update)
+
+These deps have versions hardcoded in the POM rather than inherited from parent:
+
+| Dependency | Current Version | Action |
+|---|---|---|
+| hsqldb | 2.7.4 | Check if flagged by Snyk — update if needed |
+| ojdbc8 | 23.26.2.0.0 | Usually not flagged — leave unless Snyk flags it |
+| commons-collections4 | 4.5.0 | Current — leave as-is |
+| org.json:json | 20240303 | Check for CVEs — update if flagged |
+| commons-io | 2.22.0 | Current — leave as-is |
+| cmr-em-microserviceframework | 1.0.43-RELEASE | Internal — check with Citi team |
+| javapasswordsdk (CyberArk) | 12.6 | Internal — check with Citi team |
+| springdoc-openapi-ui | 1.8.0 | Check for updates if flagged |
+| jna / jna-platform | 5.18.1 | Current — leave as-is |
+
+---
+
+## Microservices Covered
+
+This skill applies to all CHUB microservices with this parent BOM pattern:
+1. aut-d-partyauth-xd-ea-em
+2. xp-d-issdvcadmin-card-xd-ea-em
+3. cus-d-custcnst-agmt-xd-ea-em
+4. cst-d-custprofile-xd-ea-em
+5. aim-d-channelact-cde-xd-ea-em
+6. rsk-d-demgphcscrm-kyc-xd-ea-em
+
+---
+
+## CVEs Addressed
 
 | CVE | Library | Fixed By |
 |---|---|---|
@@ -193,36 +315,33 @@ If the project has a parent pom.xml with child modules:
 | CVE-2025-14813 | bouncycastle | bouncycastle 1.84 |
 | CVE-2026-45292 | opentelemetry-api | opentelemetry 1.62.0 |
 | CVE-2026-40477 | thymeleaf | thymeleaf 3.1.4.RELEASE |
-| CVE-2026-41726 | spring-kafka | spring-kafka 3.3.16 / 4.0.6 |
+| CVE-2026-41726 | spring-kafka | spring-kafka 3.3.16 |
 | CVE-2026-41695 | spring-data-commons | spring-data 3.5.12 |
 | CVE-2026-42403 | neethi | neethi 3.2.2 |
-| CVE-2026-40975 | spring-boot | Spring Boot 3.5.13 / 4.0.7 |
-| CVE-2026-40972 | spring-boot-devtools | Spring Boot 3.5.13 / 4.0.7 |
-| CVE-2026-40974 | spring-boot-autoconfigure | Spring Boot 3.5.13 / 4.0.7 |
+| CVE-2026-40975 | spring-boot | Parent BOM upgrade |
+| CVE-2026-40972 | spring-boot-devtools | Parent BOM upgrade |
+| CVE-2026-40974 | spring-boot-autoconfigure | Parent BOM upgrade |
 | CVE-2026-41901 | thymeleaf-spring6 | thymeleaf 3.1.4.RELEASE |
 | CVE-2026-41855 | spring-jms | Spring Framework 6.2.19 / 7.0.8 |
 | CVE-2026-42581 | netty-codec-http | netty 4.1.133.Final+ |
 
 ---
 
-## Microservices Covered
+## Validation After Fix
 
-This skill is configured for the following services (CHUB platform):
-1. aut-d-partyauth-xd-ea-em
-2. xp-d-issdvcadmin-card-xd-ea-em
-3. cus-d-custcnst-agmt-xd-ea-em
-4. cst-d-custprofile-xd-ea-em
-5. aim-d-channelact-cde-xd-ea-em
-6. rsk-d-demgphcscrm-kyc-xd-ea-em
+1. Run: `mvn clean compile -DskipTests`
+2. Run: `mvn dependency:tree | findstr "spring-core"` — verify version is 6.2.19+
+3. Run: `mvn dependency:tree | findstr "micrometer-core"` — verify version is 1.15.12+
+4. Run: `mvn dependency:tree | findstr "netty-handler"` — verify version is 4.1.135+
+5. If build passes, commit and push
 
 ---
 
 ## Maintenance
 
 When new Snyk findings appear:
-1. Update the Version Governance Matrix table above with new target versions
-2. Add new CVE entries to the CVEs table
-3. Commit the updated skill file
-4. Re-run Copilot Chat or the automation script
-
-This file is the single source of truth for approved dependency versions.
+1. First check if a newer `ccp-spring-boot-starter-parent-master` is available
+2. If yes, update parent version — this is the cleanest fix
+3. If no, add/update the `<dependencyManagement>` overrides above
+4. Update this skill file with new target versions
+5. Re-run the automation script or Copilot Chat
