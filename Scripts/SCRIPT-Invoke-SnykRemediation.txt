@@ -9,10 +9,11 @@
     - JDK 17 hardcoded in properties AND compiler plugin
 
     This script:
-    1. Adds a <dependencyManagement> block to override vulnerable transitive deps
-    2. Updates JDK version from 17 to 21 in all 3 places
-    3. Optionally updates the parent BOM version
-    4. Creates branches, commits, and pushes
+    1. Adds version properties to override vulnerable transitive deps (proven approach)
+    2. Updates JDK version from 17 to 21 in all 5 places
+    3. Detects and warns about version mismatches (Boot 4.x deps in Boot 3.x projects)
+    4. Optionally updates the parent BOM version
+    5. Creates branches, commits, and pushes
 
 .PARAMETER RootDir
     Path to parent directory containing all microservice repo folders.
@@ -26,9 +27,20 @@
 .PARAMETER SkipGit
     Apply fixes but don't create branches or commit.
 
+.PARAMETER FixMismatches
+    If specified, removes hardcoded versions from Spring Boot managed dependencies.
+
 .EXAMPLE
+    # Preview changes (safe)
     .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -DryRun
-    .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos"
+
+    # Apply fixes without git operations
+    .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -SkipGit
+
+    # Apply fixes and fix version mismatches
+    .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -FixMismatches
+
+    # Full run with new parent BOM version
     .\Invoke-SnykRemediation.ps1 -RootDir "C:\work\repos" -ParentBomVersion "2026.7.1.RELEASE"
 #>
 
@@ -46,7 +58,9 @@ param(
 
     [switch]$SkipGit,
 
-    [switch]$Validate
+    [switch]$Validate,
+
+    [switch]$FixMismatches
 )
 
 # ============================================================
@@ -67,162 +81,95 @@ Write-Host ""
 
 $JavaVersion = "21"
 
-# The dependencyManagement block to inject for overriding vulnerable versions
-$dependencyManagementBlock = @"
-    <dependencyManagement>
-        <dependencies>
-            <!-- Snyk CVE Remediation: Override transitive dependency versions -->
-            
-            <!-- Spring Framework 6.2.19 - fixes CVE-2026-41850, 41839, 41851, 41846, 41855 -->
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-core</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-web</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-webmvc</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-expression</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-context</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-beans</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-aop</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-jdbc</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-tx</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-jms</artifactId>
-                <version>6.2.19</version>
-            </dependency>
+# Version properties to inject into <properties> block
+# These override transitive dependency versions from the parent BOM
+$versionProperties = @(
+    @{ Name = "spring-framework.version"; Value = "6.2.19";          Comment = "CVE-2026-41850,41839,41851,41846,41855" }
+    @{ Name = "spring-retry.version";     Value = "2.0.13";          Comment = "CVE-2026-41710" }
+    @{ Name = "micrometer.version";       Value = "1.15.12";         Comment = "CVE-2026-40984" }
+    @{ Name = "netty.version";            Value = "4.1.135.Final";   Comment = "CVE-2026-45416,42587,42581" }
+    @{ Name = "tomcat.version";           Value = "10.1.55";         Comment = "CVE-2026-42498,41284" }
+)
 
-            <!-- Spring Retry 2.0.13 - fixes CVE-2026-41710 -->
-            <dependency>
-                <groupId>org.springframework.retry</groupId>
-                <artifactId>spring-retry</artifactId>
-                <version>2.0.13</version>
-            </dependency>
+# Additional properties only needed by specific services
+$additionalProperties = @(
+    @{ Name = "opentelemetry.version";    Value = "1.62.0";          Comment = "CVE-2026-45292"; Services = @("xp-d-issdvcadmin", "aim-d-channelact") }
+    @{ Name = "thymeleaf.version";        Value = "3.1.4.RELEASE";   Comment = "CVE-2026-40477,41901"; Services = @("cus-d-custcnst", "cst-d-custprofile") }
+    @{ Name = "spring-kafka.version";     Value = "3.3.16";          Comment = "CVE-2026-41726"; Services = @("cus-d-custcnst", "cst-d-custprofile") }
+    @{ Name = "bouncycastle.version";     Value = "1.84";            Comment = "CVE-2025-14813"; Services = @("cus-d-custcnst", "cst-d-custprofile") }
+)
 
-            <!-- Micrometer 1.15.12 - fixes CVE-2026-40984 -->
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-core</artifactId>
-                <version>1.15.12</version>
-            </dependency>
+# Dependencies that should NEVER have a hardcoded version (managed by parent BOM)
+$bomManagedGroupIds = @(
+    "org.springframework.boot",
+    "org.springframework.cloud",
+    "org.springframework"
+)
 
-            <!-- Netty 4.1.135.Final - fixes CVE-2026-45416, 42587, 42581 -->
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-handler</artifactId>
-                <version>4.1.135.Final</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec</artifactId>
-                <version>4.1.135.Final</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec-http</artifactId>
-                <version>4.1.135.Final</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec-http2</artifactId>
-                <version>4.1.135.Final</version>
-            </dependency>
-
-            <!-- Tomcat 10.1.55 - fixes CVE-2026-42498, 41284 -->
-            <dependency>
-                <groupId>org.apache.tomcat.embed</groupId>
-                <artifactId>tomcat-embed-core</artifactId>
-                <version>10.1.55</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.tomcat.embed</groupId>
-                <artifactId>tomcat-embed-websocket</artifactId>
-                <version>10.1.55</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.tomcat</groupId>
-                <artifactId>tomcat-jdbc</artifactId>
-                <version>10.1.55</version>
-            </dependency>
-
-            <!-- OpenTelemetry 1.62.0 - fixes CVE-2026-45292 -->
-            <dependency>
-                <groupId>io.opentelemetry</groupId>
-                <artifactId>opentelemetry-api</artifactId>
-                <version>1.62.0</version>
-            </dependency>
-
-            <!-- Thymeleaf 3.1.4 - fixes CVE-2026-40477, 41901 -->
-            <dependency>
-                <groupId>org.thymeleaf</groupId>
-                <artifactId>thymeleaf</artifactId>
-                <version>3.1.4.RELEASE</version>
-            </dependency>
-            <dependency>
-                <groupId>org.thymeleaf</groupId>
-                <artifactId>thymeleaf-spring6</artifactId>
-                <version>3.1.4.RELEASE</version>
-            </dependency>
-
-            <!-- Spring Kafka 3.3.16 - fixes CVE-2026-41726 -->
-            <dependency>
-                <groupId>org.springframework.kafka</groupId>
-                <artifactId>spring-kafka</artifactId>
-                <version>3.3.16</version>
-            </dependency>
-
-            <!-- Bouncycastle 1.84 - fixes CVE-2025-14813 -->
-            <dependency>
-                <groupId>org.bouncycastle</groupId>
-                <artifactId>bcprov-jdk18on</artifactId>
-                <version>1.84</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-"@
+# Dependencies that ARE allowed to have explicit versions (not in parent BOM)
+$allowedExplicitVersions = @(
+    "sonar-jacoco-listeners",
+    "cmr-em-microserviceframework",
+    "javapasswordsdk",
+    "springdoc-openapi-ui",
+    "hsqldb",
+    "ojdbc8",
+    "commons-collections4",
+    "commons-io",
+    "json",
+    "jna",
+    "jna-platform",
+    "mockito-core",
+    "jaxb-xjc",
+    "jaxb-runtime"
+)
 
 # ============================================================
 # FUNCTIONS
 # ============================================================
 
+function Add-VersionProperty {
+    <#
+    .SYNOPSIS
+        Adds a version property to the <properties> block if not already present,
+        or updates it if the value is outdated.
+    #>
+    param(
+        [string]$Content,
+        [string]$PropertyName,
+        [string]$PropertyValue
+    )
+
+    $result = @{ Content = $Content; Change = $null }
+
+    $pattern = "(<${PropertyName}>)(.*?)(</${PropertyName}>)"
+
+    if ($Content -match $pattern) {
+        # Property exists — check if it needs updating
+        $currentValue = $Matches[2].Trim()
+        if ($currentValue -ne $PropertyValue) {
+            $result.Content = $Content -replace $pattern, "`${1}${PropertyValue}`${3}"
+            $result.Change = "${PropertyName}: ${currentValue} -> ${PropertyValue}"
+        }
+        # else: already correct, no change needed
+    }
+    else {
+        # Property doesn't exist — add it before </properties>
+        $insertBefore = "</properties>"
+        if ($Content -match $insertBefore) {
+            $newProp = "    <${PropertyName}>${PropertyValue}</${PropertyName}>"
+            $result.Content = $Content -replace $insertBefore, "${newProp}`n    ${insertBefore}"
+            $result.Change = "${PropertyName}: ADDED (${PropertyValue})"
+        }
+    }
+
+    return $result
+}
+
 function Update-JavaVersion {
     <#
     .SYNOPSIS
-        Updates JDK version from 17 to 21 in all 3 locations within pom.xml.
+        Updates JDK version from 17 to 21 in all 5 locations within pom.xml.
     #>
     param([string]$Content)
 
@@ -246,8 +193,7 @@ function Update-JavaVersion {
         $changes += "maven.compiler.source: 17 -> $JavaVersion"
     }
 
-    # Place 4: maven-compiler-plugin <source>17</source> and <target>17</target>
-    # These are inside the plugin configuration block
+    # Place 4 & 5: maven-compiler-plugin <source>17</source> and <target>17</target>
     if ($Content -match "<source>17</source>") {
         $Content = $Content -replace "<source>17</source>", "<source>$JavaVersion</source>"
         $changes += "compiler-plugin source: 17 -> $JavaVersion"
@@ -260,166 +206,93 @@ function Update-JavaVersion {
     return @{ Content = $Content; Changes = $changes }
 }
 
-function Update-ParentBomVersion {
+function Find-VersionMismatches {
     <#
     .SYNOPSIS
-        Updates the ccp-spring-boot-starter-parent-master version.
+        Detects hardcoded versions on dependencies that should be managed by parent BOM.
+        Specifically looks for Boot 4.x versions in Boot 3.x projects.
     #>
+    param([string]$Content)
+
+    $warnings = @()
+
+    # Find all dependencies with explicit <version> that belong to BOM-managed groups
+    foreach ($groupId in $bomManagedGroupIds) {
+        # Pattern: <groupId>org.springframework.boot</groupId> ... <artifactId>X</artifactId> ... <version>Y</version>
+        $depPattern = "<dependency>[\s\S]*?<groupId>${groupId}</groupId>[\s\S]*?<artifactId>(.*?)</artifactId>[\s\S]*?<version>(.*?)</version>[\s\S]*?</dependency>"
+        
+        $matches = [regex]::Matches($Content, $depPattern)
+        foreach ($match in $matches) {
+            $artifactId = $match.Groups[1].Value
+            $version = $match.Groups[2].Value
+
+            # Skip if it's in the allowed list
+            if ($allowedExplicitVersions -contains $artifactId) { continue }
+
+            # Flag it
+            $warnings += @{
+                ArtifactId = $artifactId
+                GroupId    = $groupId
+                Version    = $version
+                Severity   = if ($version -match "^4\.") { "HIGH" } else { "MEDIUM" }
+                Message    = "${groupId}:${artifactId} has hardcoded version ${version} - should be managed by parent BOM"
+            }
+        }
+    }
+
+    return $warnings
+}
+
+function Remove-HardcodedVersion {
+    <#
+    .SYNOPSIS
+        Removes the <version> tag from a dependency, letting the parent BOM manage it.
+    #>
+    param(
+        [string]$Content,
+        [string]$GroupId,
+        [string]$ArtifactId
+    )
+
+    $result = @{ Content = $Content; Change = $null }
+
+    # Match the <version>...</version> line within the specific dependency block
+    # This is a simplified approach - looks for version tag near the artifactId
+    $pattern = "(<dependency>[\s\S]*?<groupId>${GroupId}</groupId>[\s\S]*?<artifactId>${ArtifactId}</artifactId>[\s\S]*?)\s*<version>.*?</version>([\s\S]*?</dependency>)"
+    
+    if ($Content -match $pattern) {
+        $Content = $Content -replace $pattern, '$1$2'
+        $result.Content = $Content
+        $result.Change = "Removed hardcoded version from ${GroupId}:${ArtifactId}"
+    }
+
+    return $result
+}
+
+function Update-ParentBomVersion {
     param(
         [string]$Content,
         [string]$NewVersion
     )
 
-    $changes = @()
+    $result = @{ Content = $Content; Change = $null }
 
     $pattern = "(<artifactId>ccp-spring-boot-starter-parent-master</artifactId>\s*<version>)([\d\.A-Z\-]+)(</version>)"
     if ($Content -match $pattern) {
         $currentVersion = $Matches[2]
         if ($currentVersion -ne $NewVersion) {
-            $Content = $Content -replace $pattern, "`${1}${NewVersion}`${3}"
-            $changes += "Parent BOM: $currentVersion -> $NewVersion"
+            $result.Content = $Content -replace $pattern, "`${1}${NewVersion}`${3}"
+            $result.Change = "Parent BOM: $currentVersion -> $NewVersion"
         }
     }
 
-    return @{ Content = $Content; Changes = $changes }
-}
-
-function Add-DependencyManagement {
-    <#
-    .SYNOPSIS
-        Injects a <dependencyManagement> block after </parent> if not already present.
-    #>
-    param(
-        [string]$Content,
-        [string]$DmBlock
-    )
-
-    $changes = @()
-
-    # Check if dependencyManagement already exists
-    if ($Content -match "<dependencyManagement>") {
-        # Already has dependencyManagement - need to merge (or skip)
-        Write-Host "    [INFO] <dependencyManagement> already exists - checking for missing overrides" -ForegroundColor DarkCyan
-        
-        # Check if our remediation comment is already there
-        if ($Content -match "Snyk CVE Remediation") {
-            $changes += "dependencyManagement: already has remediation overrides (skipped)"
-            return @{ Content = $Content; Changes = $changes }
-        }
-
-        # Insert our dependencies inside the existing <dependencyManagement><dependencies> block
-        $insertPattern = "(<dependencyManagement>\s*<dependencies>)"
-        if ($Content -match $insertPattern) {
-            $remedDeps = @"
-            <!-- Snyk CVE Remediation: Override transitive dependency versions -->
-            
-            <!-- Spring Framework 6.2.19 -->
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-core</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-web</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-webmvc</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-expression</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-context</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-beans</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-aop</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-jdbc</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-tx</artifactId>
-                <version>6.2.19</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.retry</groupId>
-                <artifactId>spring-retry</artifactId>
-                <version>2.0.13</version>
-            </dependency>
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-core</artifactId>
-                <version>1.15.12</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-handler</artifactId>
-                <version>4.1.135.Final</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec</artifactId>
-                <version>4.1.135.Final</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec-http</artifactId>
-                <version>4.1.135.Final</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.tomcat.embed</groupId>
-                <artifactId>tomcat-embed-core</artifactId>
-                <version>10.1.55</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.tomcat.embed</groupId>
-                <artifactId>tomcat-embed-websocket</artifactId>
-                <version>10.1.55</version>
-            </dependency>
-
-"@
-            $Content = $Content -replace $insertPattern, "`$1`n$remedDeps"
-            $changes += "dependencyManagement: injected remediation overrides into existing block"
-        }
-    }
-    else {
-        # No dependencyManagement exists - insert the full block after </parent> or before <dependencies>
-        if ($Content -match "(</parent>)") {
-            $Content = $Content -replace "(</parent>)", "`$1`n`n$DmBlock"
-            $changes += "dependencyManagement: added new block with all CVE overrides"
-        }
-        elseif ($Content -match "(<dependencies>)") {
-            $Content = $Content -replace "(<dependencies>)", "$DmBlock`n    `$1"
-            $changes += "dependencyManagement: added new block before <dependencies>"
-        }
-    }
-
-    return @{ Content = $Content; Changes = $changes }
+    return $result
 }
 
 # ============================================================
 # MAIN PROCESSING
 # ============================================================
 
-# Find all repos with pom.xml
 $repoDirs = Get-ChildItem -Path $RootDir -Directory | Where-Object {
     Test-Path (Join-Path $_.FullName "pom.xml")
 }
@@ -442,6 +315,7 @@ foreach ($repoDir in $repoDirs) {
 
     $repoPath = $repoDir.FullName
     $allChanges = @()
+    $allWarnings = @()
 
     # Git branch
     if (-not $SkipGit -and -not $DryRun) {
@@ -452,7 +326,7 @@ foreach ($repoDir in $repoDirs) {
         Pop-Location
     }
 
-    # Process all pom.xml files in the repo
+    # Process all pom.xml files
     $pomFiles = Get-ChildItem -Path $repoPath -Filter "pom.xml" -Recurse -File
 
     foreach ($pomFile in $pomFiles) {
@@ -462,30 +336,70 @@ foreach ($repoDir in $repoDirs) {
 
         Write-Host "  Processing: $relativePath" -ForegroundColor DarkCyan
 
-        # 1. Update parent BOM version (if specified)
+        # --- 1. Update Parent BOM (if specified) ---
         if ($ParentBomVersion) {
             $bomResult = Update-ParentBomVersion -Content $content -NewVersion $ParentBomVersion
-            if ($bomResult.Changes.Count -gt 0) {
+            if ($bomResult.Change) {
                 $content = $bomResult.Content
-                $bomResult.Changes | ForEach-Object { $allChanges += "    [$relativePath] $_" }
+                $allChanges += "    [$relativePath] $($bomResult.Change)"
             }
         }
 
-        # 2. Add/update dependencyManagement overrides
-        $dmResult = Add-DependencyManagement -Content $content -DmBlock $dependencyManagementBlock
-        if ($dmResult.Changes.Count -gt 0) {
-            $content = $dmResult.Content
-            $dmResult.Changes | ForEach-Object { $allChanges += "    [$relativePath] $_" }
+        # --- 2. Add/update version properties (CORE FIX) ---
+        foreach ($prop in $versionProperties) {
+            $propResult = Add-VersionProperty -Content $content `
+                -PropertyName $prop.Name -PropertyValue $prop.Value
+            if ($propResult.Change) {
+                $content = $propResult.Content
+                $allChanges += "    [$relativePath] $($propResult.Change)"
+            }
         }
 
-        # 3. Update JDK version (17 -> 21)
+        # --- 3. Add service-specific properties ---
+        foreach ($prop in $additionalProperties) {
+            # Check if this service needs this property
+            $serviceMatch = $false
+            foreach ($svc in $prop.Services) {
+                if ($repoDir.Name -match $svc) { $serviceMatch = $true; break }
+            }
+
+            if ($serviceMatch) {
+                $propResult = Add-VersionProperty -Content $content `
+                    -PropertyName $prop.Name -PropertyValue $prop.Value
+                if ($propResult.Change) {
+                    $content = $propResult.Content
+                    $allChanges += "    [$relativePath] $($propResult.Change)"
+                }
+            }
+        }
+
+        # --- 4. Update JDK version (all 5 places) ---
         $jdkResult = Update-JavaVersion -Content $content
         if ($jdkResult.Changes.Count -gt 0) {
             $content = $jdkResult.Content
             $jdkResult.Changes | ForEach-Object { $allChanges += "    [$relativePath] $_" }
         }
 
-        # Write changes
+        # --- 5. Detect version mismatches ---
+        $mismatches = Find-VersionMismatches -Content $content
+        foreach ($mm in $mismatches) {
+            $severity = $mm.Severity
+            $color = if ($severity -eq "HIGH") { "Red" } else { "Yellow" }
+            Write-Host "    [MISMATCH-$severity] $($mm.Message)" -ForegroundColor $color
+            $allWarnings += $mm
+
+            # Fix if requested
+            if ($FixMismatches) {
+                $fixResult = Remove-HardcodedVersion -Content $content `
+                    -GroupId $mm.GroupId -ArtifactId $mm.ArtifactId
+                if ($fixResult.Change) {
+                    $content = $fixResult.Content
+                    $allChanges += "    [$relativePath] $($fixResult.Change)"
+                }
+            }
+        }
+
+        # --- Write changes ---
         if ($content -ne $originalContent) {
             if ($DryRun) {
                 Write-Host "    [DRY RUN] Would modify $relativePath" -ForegroundColor Magenta
@@ -497,7 +411,7 @@ foreach ($repoDir in $repoDirs) {
         }
     }
 
-    # Process Dockerfiles
+    # --- Process Dockerfiles ---
     $dockerFiles = Get-ChildItem -Path $repoPath -Filter "Dockerfile*" -Recurse -File
     foreach ($df in $dockerFiles) {
         $content = Get-Content $df.FullName -Raw
@@ -511,7 +425,7 @@ foreach ($repoDir in $repoDirs) {
         }
     }
 
-    # Display changes
+    # --- Display Results ---
     if ($allChanges.Count -gt 0) {
         Write-Host "  Changes ($($allChanges.Count)):" -ForegroundColor Yellow
         $allChanges | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
@@ -520,7 +434,11 @@ foreach ($repoDir in $repoDirs) {
         Write-Host "  [NO CHANGES NEEDED]" -ForegroundColor DarkGray
     }
 
-    # Validate
+    if ($allWarnings.Count -gt 0 -and -not $FixMismatches) {
+        Write-Host "  [!] $($allWarnings.Count) version mismatch(es) found. Run with -FixMismatches to auto-fix." -ForegroundColor Red
+    }
+
+    # --- Validate Build ---
     $buildStatus = "Skipped"
     if ($Validate -and -not $DryRun -and $allChanges.Count -gt 0) {
         Write-Host "  [BUILD] Validating..." -ForegroundColor Cyan -NoNewline
@@ -537,13 +455,13 @@ foreach ($repoDir in $repoDirs) {
         Pop-Location
     }
 
-    # Git commit & push
+    # --- Git Commit & Push ---
     if (-not $SkipGit -and -not $DryRun -and $allChanges.Count -gt 0) {
         Push-Location $repoPath
         git add "pom.xml" 2>$null
         git add "**/pom.xml" 2>$null
         git add "Dockerfile*" 2>$null
-        git commit -m "fix: remediate Snyk CVEs via dependencyManagement overrides + JDK 21" 2>$null
+        git commit -m "fix: remediate Snyk CVEs via version properties + JDK 21" 2>$null
         git push -u origin $BranchName 2>$null
         Pop-Location
     }
@@ -551,6 +469,7 @@ foreach ($repoDir in $repoDirs) {
     $results += [PSCustomObject]@{
         Repository = $repoDir.Name
         Changes    = $allChanges.Count
+        Warnings   = $allWarnings.Count
         Build      = $buildStatus
     }
 
@@ -569,10 +488,16 @@ Write-Host ""
 $results | Format-Table -AutoSize
 
 $totalChanges = ($results | Measure-Object -Property Changes -Sum).Sum
-Write-Host "  Total changes: $totalChanges" -ForegroundColor Green
+$totalWarnings = ($results | Measure-Object -Property Warnings -Sum).Sum
+
+Write-Host "  Total changes:  $totalChanges" -ForegroundColor Green
+Write-Host "  Total warnings: $totalWarnings" -ForegroundColor $(if($totalWarnings -gt 0){'Red'}else{'Green'})
 Write-Host "  Mode: $(if($DryRun){'DRY RUN - no files modified'}else{'LIVE - changes applied'})" -ForegroundColor $(if($DryRun){'Yellow'}else{'Green'})
 Write-Host ""
 
 if ($DryRun) {
     Write-Host "  Re-run without -DryRun to apply changes." -ForegroundColor Yellow
+}
+if ($totalWarnings -gt 0 -and -not $FixMismatches) {
+    Write-Host "  [!] Re-run with -FixMismatches to auto-remove hardcoded versions." -ForegroundColor Red
 }
