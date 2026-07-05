@@ -1,0 +1,169 @@
+================================================================================
+PROMPTS FOR GENERATING SNYK VULNERABILITY ANALYSIS DOCUMENT
+================================================================================
+
+Use these prompts in GitHub Copilot Chat "Agent" mode.
+Make sure your CSV file is in the workspace before running.
+
+================================================================================
+PROMPT 1: FULL ANALYSIS DOCUMENT (RECOMMENDED)
+================================================================================
+
+Read the file #file:snyk-vulnerabilities.csv and generate a comprehensive 
+vulnerability analysis document in Markdown format for the Blueprint stage.
+
+The document must include these sections:
+
+1. **Portfolio Summary** — High-level metrics table:
+   - Services scanned (count unique services)
+   - Total findings (total vulnerability entries)
+   - Unique CVEs (distinct CVE count)
+   - Spring Framework versions in flight
+   - Spring Boot versions in flight
+
+2. **Per-Service Distribution** — Table ranked by finding count (highest first):
+   - Service name (shortened)
+   - Number of findings
+   - Stack description (list distinctive frameworks beyond base Spring)
+   - Flag the highest-count service with (!)
+
+3. **Bucket Classification** — Group findings by architectural concern:
+   - Spring Framework (spring-core, web, webmvc, expression, beans, aop, jms)
+   - Spring Boot Ecosystem (spring-retry, spring-boot-*, spring-data-*, spring-kafka)
+   - Monitoring/Observability (micrometer-*, opentelemetry-*)
+   - Netty (io.netty-*)
+   - View/Utilities (thymeleaf, neethi)
+   - Tomcat Embedded (tomcat-embed-*)
+   - Security/Crypto (bouncycastle/bcprov)
+   Include: count, percentage of total, and affected artifact names
+
+4. **Recurring Patterns** — Cross-cutting observations:
+   - CVEs appearing in ALL services (shared vulnerability surface)
+   - Service-specific CVEs
+   - Version lag analysis
+   - Dependency governance gaps
+
+5. **Remediation Strategy** — Prioritized fix plan table:
+   - Priority, Action, Impact (% of findings fixed), Effort (Low/Med/High), CVEs resolved
+   - Show cumulative reduction after each priority
+
+6. **Recommendations** — 3-5 strategic recommendations for the Blueprint stage
+
+Output the document as: snyk-vulnerability-analysis.md
+
+Use professional language suitable for Chief Architect review.
+Use proper Markdown tables. Be data-driven and concise.
+
+
+================================================================================
+PROMPT 2: QUICK SUMMARY ONLY (for email/chat)
+================================================================================
+
+Read #file:snyk-vulnerabilities.csv and give me a 1-page executive summary:
+- Total services and findings
+- Top 3 riskiest services
+- Top 3 actions that fix the most CVEs
+- One-line recommendation
+
+
+================================================================================
+PROMPT 3: GENERATE FROM SCREENSHOTS (if no CSV available)
+================================================================================
+
+Based on the Snyk vulnerability data I'm providing, generate a Blueprint-stage 
+analysis document with Portfolio Summary, Per-Service Distribution, Bucket 
+Classification, and Remediation Strategy.
+
+Here's the data:
+
+Service: aut-d-partyauth-xd-ea-em
+- spring-expression@6.2.18 — CVE-2026-41850 — Fix: 6.2.19
+- spring-web@6.2.18 — CVE-2026-41839 — Fix: 6.2.19
+- spring-retry@2.0.12 — CVE-2026-41710 — Fix: 2.0.13
+- spring-core@6.2.18 — CVE-2026-41851 — Fix: 6.2.19
+- spring-webmvc@6.2.18 — CVE-2026-41846 — Fix: 6.2.19
+- micrometer-core@1.15.11 — CVE-2026-40984 — Fix: 1.15.12
+
+Service: xp-d-issdvcadmin-card-xd-ea-em
+- spring-webmvc@7.0.7 — CVE-2026-41846 — Fix: 7.0.8
+- spring-core@7.0.7 — CVE-2026-41851 — Fix: 7.0.8
+- micrometer-core@1.16.5 — CVE-2026-40984 — Fix: 1.16.6
+- opentelemetry-api@1.55.0 — CVE-2026-45292 — Fix: 1.62.0
+- spring-retry@2.0.12 — CVE-2026-41710 — Fix: 2.0.13
+- spring-expression@7.0.7 — CVE-2026-41850 — Fix: 7.0.8
+- spring-web@7.0.7 — CVE-2026-41839 — Fix: 7.0.8
+
+Service: cus-d-custcnst-agmt-xd-ea-em
+- tomcat-embed-websocket@10.1.52 — CVE-2026-42498 — Fix: 10.1.55
+- spring-data-commons@3.5.10 — CVE-2026-41695 — Fix: 3.5.12
+- micrometer-core@1.15.10 — CVE-2026-40984 — Fix: 1.15.12
+- neethi@3.2.0 — CVE-2026-42403 — Fix: 3.2.2
+- spring-boot@3.5.12 — CVE-2026-40975 — Fix: 3.5.14
+- spring-webmvc@6.2.17 — CVE-2026-41846 — Fix: 6.2.19
+- bouncycastle@1.79 — CVE-2025-14813 — Fix: 1.84
+- netty-handler@4.1.130.Final — CVE-2026-45416 — Fix: 4.1.135.Final
+- netty-codec@4.1.130.Final — CVE-2026-42587 — Fix: 4.1.133.Final
+- spring-web@6.2.17 — CVE-2026-41839 — Fix: 6.2.19
+- spring-expression@6.2.17 — CVE-2026-41850 — Fix: 6.2.19
+- thymeleaf@3.1.3.RELEASE — CVE-2026-40477 — Fix: 3.1.4.RELEASE
+- spring-kafka@3.3.15 — CVE-2026-41726 — Fix: 3.3.16
+- spring-jms@6.2.17 — CVE-2026-41855 — Fix: 6.2.19
+- spring-core@6.2.17 — CVE-2026-41851 — Fix: 6.2.19
+- tomcat-embed-core@10.1.52 — CVE-2026-41284 — Fix: 10.1.55
+- spring-boot-devtools@3.5.12 — CVE-2026-40972 — Fix: 3.5.14
+- spring-retry@2.0.12 — CVE-2026-41710 — Fix: 2.0.13
+- spring-boot-autoconfigure@3.5.12 — CVE-2026-40974 — Fix: 3.5.14
+- thymeleaf-spring6@3.1.3.RELEASE — CVE-2026-41901 — Fix: 3.1.5.RELEASE
+- netty-codec-http@4.1.130.Final — CVE-2026-42581 — Fix: 4.1.133.Final
+
+Service: cst-d-custprofile-xd-ea-em
+- spring-webmvc@7.0.7 — CVE-2026-41846 — Fix: 7.0.8
+- spring-core@7.0.7 — CVE-2026-41851 — Fix: 7.0.8
+- micrometer-core@1.16.5 — CVE-2026-40984 — Fix: 1.16.6
+- spring-retry@2.0.12 — CVE-2026-41710 — Fix: 2.0.13
+- spring-expression@7.0.7 — CVE-2026-41850 — Fix: 7.0.8
+- spring-web@7.0.7 — CVE-2026-41839 — Fix: 7.0.8
+
+Service: aim-d-channelact-cde-xd-ea-em
+- spring-core@7.0.7 — CVE-2026-41851 — Fix: 7.0.8
+- micrometer-core@1.16.5 — CVE-2026-40984 — Fix: 1.16.6
+- opentelemetry-api@1.55.0 — CVE-2026-45292 — Fix: 1.62.0
+- spring-retry@2.0.12 — CVE-2026-41710 — Fix: 2.0.13
+- spring-expression@7.0.7 — CVE-2026-41850 — Fix: 7.0.8
+- spring-web@7.0.7 — CVE-2026-41839 — Fix: 7.0.8
+
+Service: rsk-d-demgphcscrm-kyc-xd-ea-em
+- spring-webmvc@7.0.7 — CVE-2026-41846 — Fix: 7.0.8
+- spring-core@7.0.7 — CVE-2026-41851 — Fix: 7.0.8
+- micrometer-core@1.16.5 — CVE-2026-40984 — Fix: 1.16.6
+- spring-retry@2.0.12 — CVE-2026-41710 — Fix: 2.0.13
+- spring-expression@7.0.7 — CVE-2026-41850 — Fix: 7.0.8
+- spring-web@7.0.7 — CVE-2026-41839 — Fix: 7.0.8
+
+Generate the full analysis document as Markdown with all sections 
+(Portfolio Summary, Per-Service Distribution, Bucket Classification, 
+Recurring Patterns, Remediation Strategy, Recommendations).
+
+
+================================================================================
+TIPS FOR BEST RESULTS
+================================================================================
+
+1. Use "Agent" mode (not Ask/Edit) — this allows Copilot to create files
+2. If using CSV, make sure the file is in your workspace and reference it with #file:
+3. After generation, ask: "Format the tables with proper alignment"
+4. For PowerPoint conversion: "Convert the analysis to a slide-ready format with bullet points"
+5. If output is too short: "Expand the Remediation Strategy section with risk assessment for each action"
+
+================================================================================
+CSV FILE FORMAT EXPECTED
+================================================================================
+
+Your CSV should have these columns (adjust column names in the prompt if different):
+
+Service,Library,Description,Expected,Actual
+aut-d-partyauth-xd-ea-em,pkg:maven/org.springframework/spring-expression@6.2.18,CVE-2026-41850,"6.0.0, 6.2.19, 7.0.8",6.2.18
+aut-d-partyauth-xd-ea-em,pkg:maven/org.springframework/spring-web@6.2.18,CVE-2026-41839,"6.0.0, 6.2.19, 7.0.8",6.2.18
+...
+
+================================================================================
