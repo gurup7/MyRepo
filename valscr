@@ -1,0 +1,206 @@
+<#
+.SYNOPSIS
+    Snyk Vulnerability Remediation - Build Validation Script
+
+.DESCRIPTION
+    Validates that POM dependency version overrides resolved correctly after
+    applying Snyk CVE remediation. Runs compile, checks dependency versions,
+    detects Boot major-version mismatches, and runs tests.
+
+.PARAMETER ProjectDir
+    Path to the project directory containing pom.xml
+
+.PARAMETER LibraryFilter
+    Optional Maven coordinates filter (e.g., "org.springframework:spring-core")
+
+.PARAMETER SkipTests
+    Skip test execution (faster validation)
+
+.EXAMPLE
+    .\validate-remediation.ps1 -ProjectDir "C:\projects\IssDvcAdmin"
+
+.EXAMPLE
+    .\validate-remediation.ps1 -ProjectDir "." -LibraryFilter "org.springframework:spring-core"
+
+.EXAMPLE
+    .\validate-remediation.ps1 -ProjectDir "C:\projects\PartyAuth" -SkipTests
+#>
+
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectDir,
+
+    [Parameter(Mandatory = $false)]
+    [string]$LibraryFilter,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipTests
+)
+
+# --- Setup ---
+$ErrorActionPreference = "Continue"
+$script:PassCount = 0
+$script:FailCount = 0
+$script:WarnCount = 0
+
+function Write-StepHeader($step, $total, $message) {
+    Write-Host "`n[$step/$total] $message" -ForegroundColor Cyan
+    Write-Host ("-" * 60)
+}
+
+function Write-Pass($message) {
+    Write-Host "  PASS: $message" -ForegroundColor Green
+    $script:PassCount++
+}
+
+function Write-Fail($message) {
+    Write-Host "  FAIL: $message" -ForegroundColor Red
+    $script:FailCount++
+}
+
+function Write-Warn($message) {
+    Write-Host "  WARN: $message" -ForegroundColor Yellow
+    $script:WarnCount++
+}
+
+# --- Validate inputs ---
+$ProjectDir = Resolve-Path $ProjectDir -ErrorAction SilentlyContinue
+if (-not $ProjectDir) {
+    Write-Host "ERROR: Directory not found: $ProjectDir" -ForegroundColor Red
+    exit 1
+}
+
+$pomFile = Join-Path $ProjectDir "pom.xml"
+if (-not (Test-Path $pomFile)) {
+    Write-Host "ERROR: No pom.xml found in $ProjectDir" -ForegroundColor Red
+    exit 1
+}
+
+# --- Header ---
+Write-Host "=" * 70 -ForegroundColor White
+Write-Host "  Snyk Remediation Validation" -ForegroundColor White
+Write-Host "  Project : $ProjectDir" -ForegroundColor Gray
+Write-Host "  Date    : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+Write-Host "=" * 70 -ForegroundColor White
+
+Push-Location $ProjectDir
+
+try {
+    $totalSteps = if ($SkipTests) { 4 } else { 5 }
+
+    # -------------------------------------------------------------------------
+    # Step 1: Clean Compile
+    # -------------------------------------------------------------------------
+    Write-StepHeader 1 $totalSteps "Clean compile (mvn clean compile -DskipTests)"
+
+    $buildOutput = & mvn clean compile -DskipTests 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "Compilation failed."
+        Write-Host ""
+        Write-Host "  Common causes:" -ForegroundColor Gray
+        Write-Host "    - Boot 4.x dependency in Boot 3.x project (version mismatch)" -ForegroundColor Gray
+        Write-Host "    - Parent BOM not in local repo (run: mvn dependency:resolve)" -ForegroundColor Gray
+        Write-Host "    - API removed in upgraded library" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "  Last 20 lines of build output:" -ForegroundColor Gray
+        $buildOutput | Select-Object -Last 20 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    } else {
+        Write-Pass "Compilation successful."
+    }
+
+    # -------------------------------------------------------------------------
+    # Step 2: Verify key dependency versions
+    # -------------------------------------------------------------------------
+    Write-StepHeader 2 $totalSteps "Verifying resolved dependency versions"
+
+    $libraries = @(
+        @{ Name = "Spring Framework"; Filter = "org.springframework:spring-core" },
+        @{ Name = "Spring Retry";     Filter = "org.springframework.retry:spring-retry" },
+        @{ Name = "Micrometer";       Filter = "io.micrometer:micrometer-core" },
+        @{ Name = "Netty Handler";    Filter = "io.netty:netty-handler" },
+        @{ Name = "Tomcat Core";      Filter = "org.apache.tomcat.embed:tomcat-embed-core" }
+    )
+
+    foreach ($lib in $libraries) {
+        $result = & mvn dependency:tree "-Dincludes=$($lib.Filter)" -q 2>&1 | 
+                  Select-String -Pattern $lib.Filter.Split(":")[1]
+        if ($result) {
+            Write-Host "  $($lib.Name):" -NoNewline -ForegroundColor White
+            Write-Host " $($result.Line.Trim())" -ForegroundColor Gray
+        } else {
+            Write-Host "  $($lib.Name):" -NoNewline -ForegroundColor White
+            Write-Host " (not in dependency tree)" -ForegroundColor DarkGray
+        }
+    }
+
+    # -------------------------------------------------------------------------
+    # Step 3: Boot version mismatch detection
+    # -------------------------------------------------------------------------
+    Write-StepHeader 3 $totalSteps "Checking for Spring Boot version mismatches"
+
+    $depTree = & mvn dependency:tree -q 2>&1
+    $mismatches = $depTree | Select-String -Pattern "spring-boot.*:4\.0"
+    if ($mismatches) {
+        Write-Warn "Found Boot 4.x dependencies — verify this is intentional:"
+        $mismatches | ForEach-Object { Write-Host "    $($_.Line.Trim())" -ForegroundColor Yellow }
+    } else {
+        Write-Pass "No Boot 4.x/3.x cross-version mismatches detected."
+    }
+
+    # -------------------------------------------------------------------------
+    # Step 4: Optional specific library check
+    # -------------------------------------------------------------------------
+    Write-StepHeader 4 $totalSteps "Specific library check"
+
+    if ($LibraryFilter) {
+        Write-Host "  Filter: $LibraryFilter" -ForegroundColor White
+        $specificResult = & mvn dependency:tree "-Dincludes=$LibraryFilter" -q 2>&1
+        if ($specificResult) {
+            $specificResult | Where-Object { $_ -match "\S" } | ForEach-Object {
+                Write-Host "    $_" -ForegroundColor Gray
+            }
+            Write-Pass "Library found in dependency tree."
+        } else {
+            Write-Warn "Library '$LibraryFilter' not found in dependency tree."
+        }
+    } else {
+        Write-Host "  No library filter provided. Skipping." -ForegroundColor DarkGray
+        Write-Host "  Tip: Use -LibraryFilter 'org.springframework:spring-core'" -ForegroundColor DarkGray
+    }
+
+    # -------------------------------------------------------------------------
+    # Step 5: Run Tests
+    # -------------------------------------------------------------------------
+    if (-not $SkipTests) {
+        Write-StepHeader 5 $totalSteps "Running tests (mvn test)"
+
+        $testOutput = & mvn test -q 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "Some tests failed. Review: target/surefire-reports/"
+            $testOutput | Select-String -Pattern "Tests run:" | Select-Object -Last 5 | 
+                ForEach-Object { Write-Host "    $($_.Line.Trim())" -ForegroundColor Yellow }
+        } else {
+            Write-Pass "All tests passed."
+        }
+    }
+
+} finally {
+    Pop-Location
+}
+
+# --- Summary ---
+Write-Host ""
+Write-Host "=" * 70 -ForegroundColor White
+Write-Host "  SUMMARY" -ForegroundColor White
+Write-Host "    Passed  : $script:PassCount" -ForegroundColor Green
+Write-Host "    Warnings: $script:WarnCount" -ForegroundColor Yellow
+Write-Host "    Failed  : $script:FailCount" -ForegroundColor Red
+Write-Host "=" * 70 -ForegroundColor White
+Write-Host ""
+Write-Host "  Next steps:" -ForegroundColor Gray
+Write-Host "    1. Compare resolved versions above against Snyk expected versions" -ForegroundColor Gray
+Write-Host "    2. If correct, commit pom.xml and push for CI/CD + Snyk re-scan" -ForegroundColor Gray
+Write-Host "    3. Verify findings resolved in Snyk dashboard" -ForegroundColor Gray
+Write-Host ""
+
+if ($script:FailCount -gt 0) { exit 1 } else { exit 0 }
