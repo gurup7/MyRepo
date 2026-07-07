@@ -104,11 +104,13 @@ Remove explicit `<version>` tags on these Spring Boot artifacts (let parent BOM 
 
 ## Rules
 
+- ALWAYS apply Task 1 (JDK 17→21) AND Task 2 (CVE properties) together — they are BOTH mandatory for every remediation. The JDK upgrade IS a Snyk finding.
+- ALWAYS change java.version, maven.compiler.source, maven.compiler.target from 17 to 21 in properties
+- ALWAYS change maven-compiler-plugin <source> and <target> from 17 to 21
 - NEVER hardcode versions on `org.springframework.boot` or `org.springframework.cloud` artifacts
 - NEVER remove existing exclusions (they are intentional security exclusions)
 - NEVER remove the `jdk8` classifier on hsqldb
 - NEVER change the parent BOM version without explicit approval
-- ALWAYS update ALL 5 JDK version locations (3 properties + 2 compiler plugin settings)
 - ALWAYS verify the remediated POM with `mvn clean compile -DskipTests`
 
 ## Validation Commands
@@ -132,10 +134,12 @@ mvn help:effective-pom | findstr "source"
 
 ## Dry Run Mode
 
-When asked for a "dry run", output changes as a structured report WITHOUT modifying files:
+When asked for a "dry run", output changes as a structured report WITHOUT modifying files.
+IMPORTANT: The AFTER block must show java.version=21 (not 17). JDK upgrade is mandatory.
+
 ```
 SERVICE: <name>
-JDK UPGRADE: 17 → 21 (5 locations)
+JDK UPGRADE: 17 → 21 (5 locations: java.version, maven.compiler.source, maven.compiler.target, plugin source, plugin target)
 PROPERTIES TO ADD:
   + spring-framework.version = 6.2.19
   + spring-retry.version = 2.0.13
@@ -148,3 +152,11 @@ DIRECT DEPS TO UPDATE:
   ~ commons-io: 2.21.0 → 2.22.0
 RISK: low | medium | high
 ```
+
+In the XML diff AFTER block, always show:
+```xml
+<java.version>21</java.version>
+<maven.compiler.target>21</maven.compiler.target>
+<maven.compiler.source>21</maven.compiler.source>
+```
+Never leave these at 17 in the AFTER output.
