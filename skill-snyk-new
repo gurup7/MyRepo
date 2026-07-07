@@ -1,0 +1,468 @@
+---
+schema: agent-skill/v1
+name: snyk-maven-vulnerability-remediation
+version: 1.0.0
+description: >
+  Automated remediation of Snyk-reported dependency vulnerabilities in
+  Spring Boot microservices using Maven POM version property overrides,
+  dependency management, and exclusion strategies.
+authors:
+  - name: CMR Engineering Team
+triggers:
+  - "Fix Snyk vulnerabilities"
+  - "Remediate CVE"
+  - "Upgrade vulnerable dependency"
+  - "Apply security patch to pom.xml"
+  - "Resolve Snyk findings"
+inputs:
+  - name: snyk_report
+    description: "Snyk vulnerability report (Library, Description, Expected version, Actual version)"
+    required: true
+  - name: pom_file
+    description: "Path to the target pom.xml file"
+    required: true
+  - name: service_group
+    description: "boot4 (Spring 7 / Boot 4) or boot3 (Spring 6 / Boot 3). Determines target versions."
+    required: false
+    default: "auto-detect"
+outputs:
+  - name: remediated_pom
+    description: "Updated pom.xml with vulnerability fixes applied"
+  - name: validation_report
+    description: "Maven build and dependency:tree verification results"
+---
+
+# Snyk Maven Vulnerability Remediation
+
+## Purpose
+
+This skill automates the remediation of Snyk-reported dependency vulnerabilities
+in Citi CHUB Spring Boot microservices. It reads Snyk findings (Library,
+Description, Expected version, Actual version) and applies the correct fix
+strategy to `pom.xml` files without modifying Java source code.
+
+## Scope
+
+- Maven `pom.xml` dependency version upgrades via property overrides
+- Version property injection in `<properties>` section
+- `<dependencyManagement>` overrides when properties are insufficient
+- Exclusion of vulnerable transitive dependencies
+- Detection and correction of version mismatches (e.g., Boot 4.x deps in Boot 3.x)
+- Local build validation (`mvn clean compile`)
+
+### Out of Scope
+
+- Java source code modifications
+- Adding new dependencies not already in the dependency tree
+- CI/CD pipeline changes
+- Snyk policy file (`.snyk`) modifications
+
+---
+
+## Architecture Context
+
+### Parent BOM
+
+All services inherit from a **custom Citi parent BOM** (not standard Spring Boot parent):
+
+```xml
+<parent>
+    <groupId>com.citi.169073.ccp.rel</groupId>
+    <artifactId>ccp-spring-boot-starter-parent-master</artifactId>
+    <version>2026.6.13.RELEASE</version>  <!-- or 2026.4.20.RELEASE -->
+</parent>
+```
+
+**Critical:** This parent BOM respects standard Spring Boot version property names.
+Setting `<spring-framework.version>` in `<properties>` overrides all transitive
+Spring Framework dependencies at build time.
+
+### Service Groups
+
+| Group | Services | Spring Boot | Spring Framework | Micrometer |
+|-------|----------|-------------|-----------------|------------|
+| **Boot 4 (Spring 7)** | IssDvcAdmin, ChannelActAnalysis | 4.x | 7.0.8 | 1.16.6 |
+| **Boot 3 (Spring 6)** | DemgphcScrn, PartyAuth, CustProfile, CustomerConsent | 3.x | 6.2.19 | 1.15.12 |
+
+### Microservice Registry
+
+| Artifact ID | Group | Parent Version | Special Dependencies |
+|---|---|---|---|
+| XP-D-IssDvcAdmin-DVC-CARD-XD-EA | Boot 4 | 2026.6.13.RELEASE | OpenTelemetry 1.62.0 |
+| AIM-D-ChannelActAnalysis-CDE-XD-EA-EM | Boot 4 | 2026.6.13.RELEASE | OpenTelemetry 1.62.0 |
+| RISK-D-DemgphcScrn-KYC-XD-EA-EM | Boot 3 | 2026.6.13.RELEASE | Netty 4.1.135, Tomcat 10.1.55 |
+| AUTH-D-PartyAuth-XD-EA | Boot 3 | 2026.6.13.RELEASE | JAXB 4.0.9 |
+| CSTI-D-CustProfile-XD-EA | Boot 3 | 2026.6.13.RELEASE | Netty 4.1.135, Tomcat 10.1.55 |
+| CUST-D-CustomerConsent-AGMT-XD-EA-EM | Boot 3 | 2026.4.20.RELEASE | Kafka, IBM MQ, Solace JMS, MongoDB, Netty, Tomcat, BouncyCastle, Thymeleaf |
+
+---
+
+## Remediation Strategy
+
+### Decision Tree
+
+```
+Snyk Finding Received
+    │
+    ├─ Is it a transitive dependency managed by Spring Boot properties?
+    │   ├─ YES → STRATEGY 1: Add/update version property in <properties>
+    │   └─ NO  → Is the dependency declared directly in pom.xml?
+    │       ├─ YES → STRATEGY 3: Update explicit <version> tag
+    │       └─ NO  → STRATEGY 2: Add <dependencyManagement> override
+    │
+    └─ Does version belong to wrong Boot major version?
+        └─ YES → STRATEGY 4: Remove explicit version, let BOM manage
+```
+
+### Strategy 1: Version Property Override (Primary - 80% of fixes)
+
+The parent BOM respects these standard Spring Boot property names. Adding or
+updating them in `<properties>` overrides all matching transitive dependencies.
+
+**Boot 3 (Spring 6) target versions:**
+
+```xml
+<properties>
+    <!-- Core framework -->
+    <spring-framework.version>6.2.19</spring-framework.version>
+    <spring-retry.version>2.0.13</spring-retry.version>
+    <micrometer.version>1.15.12</micrometer.version>
+
+    <!-- Infrastructure -->
+    <netty.version>4.1.135.Final</netty.version>
+    <tomcat.version>10.1.55</tomcat.version>
+
+    <!-- Conditional (add only if service uses the library) -->
+    <bouncycastle.version>1.84</bouncycastle.version>
+    <thymeleaf.version>3.1.4.RELEASE</thymeleaf.version>
+    <thymeleaf-spring6.version>3.1.5.RELEASE</thymeleaf-spring6.version>
+    <spring-kafka.version>3.3.16</spring-kafka.version>
+    <spring-data-commons.version>3.5.12</spring-data-commons.version>
+    <neethi.version>3.2.2</neethi.version>
+</properties>
+```
+
+**Boot 4 (Spring 7) target versions:**
+
+```xml
+<properties>
+    <!-- Core framework -->
+    <spring-framework.version>7.0.8</spring-framework.version>
+    <spring-retry.version>2.0.13</spring-retry.version>
+    <micrometer.version>1.16.6</micrometer.version>
+    <opentelemetry.version>1.62.0</opentelemetry.version>
+</properties>
+```
+
+### Strategy 2: dependencyManagement Override (Fallback)
+
+Use when `mvn dependency:tree` still shows the old version after applying Strategy 1.
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>{vulnerable.groupId}</groupId>
+            <artifactId>{vulnerable.artifactId}</artifactId>
+            <version>{expected.version}</version>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
+### Strategy 3: Direct Version Update
+
+For dependencies with explicit `<version>` in `<dependencies>`:
+
+```xml
+<!-- Before -->
+<dependency>
+    <groupId>commons-io</groupId>
+    <artifactId>commons-io</artifactId>
+    <version>2.11.0</version>  <!-- Vulnerable -->
+</dependency>
+
+<!-- After -->
+<dependency>
+    <groupId>commons-io</groupId>
+    <artifactId>commons-io</artifactId>
+    <version>2.22.0</version>  <!-- Fixed -->
+</dependency>
+```
+
+### Strategy 4: Remove Version Mismatch
+
+**Rule:** For `org.springframework.boot` or `org.springframework.cloud` artifacts,
+NEVER hardcode a version. Let the parent BOM manage it.
+
+```xml
+<!-- BAD: Boot 4.x dep in a Boot 3.x project -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webmvc-test</artifactId>
+    <version>4.0.6</version>
+    <scope>test</scope>
+</dependency>
+
+<!-- FIXED: Remove version, inherit from parent BOM -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webmvc-test</artifactId>
+    <scope>test</scope>
+</dependency>
+```
+
+**Exceptions** (these DO need explicit versions — not in parent BOM):
+- `cmr-em-microserviceframework` (Citi internal)
+- `javapasswordsdk` (CyberArk)
+- `springdoc-openapi-ui`
+- `hsqldb`, `ojdbc8` (specific classifier/version)
+- `commons-collections4`, `commons-io`, `org.json:json`
+- `solace-jms-spring-boot-starter`
+- `kafka-clients` (when pinned separately from spring-kafka)
+
+---
+
+## CVE-to-Property Mapping
+
+Use this lookup table to determine which property fixes a given CVE:
+
+| CVE ID | Vulnerable Library | Fix Property | Boot 3 Version | Boot 4 Version |
+|--------|-------------------|-------------|---------------|---------------|
+| CVE-2026-41850 | spring-expression | spring-framework.version | 6.2.19 | 7.0.8 |
+| CVE-2026-41839 | spring-web | spring-framework.version | 6.2.19 | 7.0.8 |
+| CVE-2026-41851 | spring-core | spring-framework.version | 6.2.19 | 7.0.8 |
+| CVE-2026-41846 | spring-webmvc | spring-framework.version | 6.2.19 | 7.0.8 |
+| CVE-2026-41855 | spring-jms | spring-framework.version | 6.2.19 | 7.0.8 |
+| CVE-2026-41710 | spring-retry | spring-retry.version | 2.0.13 | 2.0.13 |
+| CVE-2026-40984 | micrometer-core | micrometer.version | 1.15.12 | 1.16.6 |
+| CVE-2026-42498 | tomcat-embed-websocket | tomcat.version | 10.1.55 | — |
+| CVE-2026-41284 | tomcat-embed-core | tomcat.version | 10.1.55 | — |
+| CVE-2026-45416 | netty-handler | netty.version | 4.1.135.Final | — |
+| CVE-2026-42587 | netty-codec | netty.version | 4.1.135.Final | — |
+| CVE-2026-42581 | netty-codec-http | netty.version | 4.1.135.Final | — |
+| CVE-2025-14813 | bcprov-jdk18on | bouncycastle.version | 1.84 | — |
+| CVE-2026-45292 | opentelemetry-api | opentelemetry.version | — | 1.62.0 |
+| CVE-2026-40477 | thymeleaf | thymeleaf.version | 3.1.4.RELEASE | — |
+| CVE-2026-41901 | thymeleaf-spring6 | thymeleaf-spring6.version | 3.1.5.RELEASE | — |
+| CVE-2026-41726 | spring-kafka | spring-kafka.version | 3.3.16 | — |
+| CVE-2026-41695 | spring-data-commons | spring-data-commons.version | 3.5.12 | — |
+| CVE-2026-42403 | neethi | neethi.version | 3.2.2 | — |
+| CVE-2026-40975 | spring-boot | Parent BOM upgrade | — | — |
+| CVE-2026-40972 | spring-boot-devtools | Parent BOM upgrade | — | — |
+| CVE-2026-40974 | spring-boot-autoconfigure | Parent BOM upgrade | — | — |
+
+---
+
+## Directly Managed Dependencies (Explicit Version in POM)
+
+These dependencies have versions hardcoded in the POM and must be updated directly:
+
+| Dependency | Current Secure Version | Notes |
+|---|---|---|
+| org.json:json | 20240303 | Some services have 20240205 (update) |
+| commons-io:commons-io | 2.22.0 | Some services have 2.21.0 (update) |
+| commons-collections4 | 4.5.0 | Uniform across all |
+| hsqldb | 2.7.4 | With jdk8 classifier |
+| ojdbc8 | 23.26.2.0.0 | Uniform across all |
+| jna / jna-platform | 5.19.0 (Boot 4) / 5.18.1 (Boot 3) | Group-specific |
+| springdoc-openapi-ui | 1.8.0 | Uniform across all |
+| cmr-em-microserviceframework | 1.0.43-RELEASE | Uniform across all |
+| javapasswordsdk | 12.6 | Uniform across all |
+| sonar-jacoco-listeners | 5.14.0.18788 | Uniform across all |
+| kafka-clients | 4.2.0 | CustomerConsent only |
+| solace-jms-spring-boot-starter | 5.5.0 | CustomerConsent only |
+| com.ibm.mq.jakarta.client | 9.4.5.0 | CustomerConsent only |
+| mq-jms-spring-boot-starter | 4.0.5 | CustomerConsent only |
+| lz4-java | 1.11.0 | CustomerConsent only |
+| jasypt-spring-boot-starter | 4.0.4 | CustomerConsent only |
+| jaxb-xjc / jaxb-runtime | 4.0.9 | PartyAuth only |
+| mockito-core | 5.23.0 | PartyAuth (others use BOM-managed) |
+
+---
+
+## Execution Procedure
+
+### Step 1: Detect Service Group
+
+Read the `<properties>` section. If `spring-framework.version` is `7.x`, the service
+is **Boot 4**. If `6.x`, it is **Boot 3**.
+
+### Step 2: Parse Snyk Report
+
+For each finding, extract:
+- **Library**: e.g., `org.springframework:spring-core`
+- **Actual Version**: Currently resolved (vulnerable)
+- **Expected Version**: Minimum fixed version from Snyk
+
+### Step 3: Map Finding to Fix Strategy
+
+1. Look up library in the CVE-to-Property Mapping table above.
+2. If found → apply Strategy 1 (add/update property).
+3. If library has explicit `<version>` in `<dependencies>` → apply Strategy 3.
+4. If library is transitive but no matching property → apply Strategy 2.
+5. If version belongs to wrong Boot major → apply Strategy 4.
+
+### Step 4: Apply Fixes to pom.xml
+
+- Add missing properties to `<properties>` section.
+- Update existing property values if they are lower than the target.
+- Remove hardcoded versions on Spring Boot/Cloud artifacts.
+- Add `<dependencyManagement>` entries only as a last resort.
+
+### Step 5: Validate
+
+Run the validation script or execute manually:
+
+```cmd
+REM Build validation
+mvn clean compile -DskipTests
+
+REM Verify resolved versions
+mvn dependency:tree -Dincludes=org.springframework:spring-core
+mvn dependency:tree -Dincludes=org.springframework.retry:spring-retry
+mvn dependency:tree -Dincludes=io.micrometer:micrometer-core
+mvn dependency:tree -Dincludes=io.netty:netty-handler
+mvn dependency:tree -Dincludes=org.apache.tomcat.embed:tomcat-embed-core
+
+REM Check for Boot major version mismatches
+mvn dependency:tree | findstr /C:"4.0" | findstr /C:"spring-boot"
+```
+
+### Step 6: Run Tests
+
+```cmd
+mvn test
+```
+
+If tests fail, check for:
+- API incompatibilities from major version jumps
+- Reflection-based code broken by module system changes in JDK 21
+- Removed deprecated APIs
+
+---
+
+## Known Issues and Guardrails
+
+### Do NOT Do
+
+1. **Do not upgrade Spring Framework across major versions** (e.g., 6.x to 7.x)
+   unless the parent BOM supports it.
+2. **Do not remove exclusions** on eureka-client (xstream, woodstox, commons-jxpath,
+   bouncycastle-jdk15on, commons-configuration, commons-lang) — these are intentional
+   vulnerability exclusions.
+3. **Do not add snakeyaml** — it is intentionally excluded from cmr-em-microserviceframework.
+4. **Do not change the parent BOM version** without verifying on Nexus that it exists
+   and is approved.
+5. **Do not remove the `jdk8` classifier from hsqldb** — it is required for compatibility.
+
+### Common Pitfalls
+
+- `spring-boot-starter-webmvc-test` with version `4.0.x` in a Boot 3 project causes
+  `NoClassDefFoundError`. Fix: remove the `<version>` tag.
+- `CustomerConsent` has duplicate `spring-jms` and `jakarta.jms-api` declarations.
+  This is intentional (one for compile, one for explicit version control).
+- `opentelemetry.version` is only applicable to Boot 4 group services.
+
+---
+
+## Maintenance
+
+When new Snyk findings arrive:
+
+1. Check if a newer `ccp-spring-boot-starter-parent-master` is available on Nexus.
+   If yes, update the parent version first — this is the cleanest fix.
+2. Look up the vulnerable library in the CVE-to-Property Mapping table.
+3. If not listed, determine if the library is transitive (use `mvn dependency:tree`)
+   and find the appropriate Spring Boot property name from
+   [Spring Boot Dependency Versions](https://docs.spring.io/spring-boot/appendix/dependency-versions/properties.html).
+4. Add the new property/version to this SKILL file.
+5. Validate with `mvn clean compile -DskipTests` and `mvn dependency:tree`.
+
+---
+
+## Build and Test Procedure (Local)
+
+### Prerequisites
+
+- JDK 21 installed and `JAVA_HOME` set
+- Maven 3.9+ installed
+- Access to Citi Nexus repository (for parent BOM and internal dependencies)
+- `settings.xml` configured with Nexus mirror and credentials
+
+### Commands
+
+```cmd
+REM Navigate to the microservice project root (where pom.xml lives)
+cd <service-project-root>
+
+REM 1. Clean build (skip tests for quick validation)
+mvn clean compile -DskipTests
+
+REM 2. Full build with tests
+mvn clean verify
+
+REM 3. Package the WAR
+mvn clean package -DskipTests
+
+REM 4. Check effective POM (useful to verify property resolution)
+mvn help:effective-pom -Doutput=effective-pom.xml
+
+REM 5. Full dependency tree (save to file for review)
+mvn dependency:tree -DoutputFile=dependency-tree.txt
+
+REM 6. Check for specific library version
+mvn dependency:tree -Dincludes=org.springframework:spring-core
+```
+
+### Troubleshooting Build Failures
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Could not resolve dependencies` | Parent BOM version not in local cache | Run `mvn dependency:resolve` or check Nexus access |
+| `NoClassDefFoundError` in tests | Boot version mismatch (4.x dep in 3.x) | Remove explicit version on spring-boot artifacts |
+| `package does not exist` | Major version API change | Check if the import moved (javax → jakarta, etc.) |
+| `Plugin not found` | `ert-maven-plugin` is Citi-internal | Ensure settings.xml has Citi Nexus plugin repository |
+
+---
+
+## Example: Full Remediation Walkthrough
+
+**Input (from Snyk):**
+```
+Library: org.springframework:spring-core
+Actual: 6.2.15
+Expected: 6.2.19
+CVE: CVE-2026-41851
+```
+
+**Step 1:** Service is Boot 3 (spring-framework.version shows 6.x or is absent).
+
+**Step 2:** Look up in CVE table → Fix property: `spring-framework.version`
+
+**Step 3:** Check if property exists in `<properties>`:
+- If YES and value < 6.2.19 → update to `6.2.19`
+- If NO → add `<spring-framework.version>6.2.19</spring-framework.version>`
+
+**Step 4:** Build: `mvn clean compile -DskipTests`
+
+**Step 5:** Verify: `mvn dependency:tree -Dincludes=org.springframework:spring-core`
+→ Should show `6.2.19`
+
+---
+
+## File Structure
+
+```
+snyk-remediation/
+├── SKILL.md                          ← This file (Agent Skill definition)
+├── validate-remediation.cmd          ← Local validation script (Windows)
+└── reference/
+    └── pom-files/                    ← Reference POM files for the 6 services
+        ├── channelactanalysis-pom.xml
+        ├── CustomerConsent-pom.xml
+        ├── CustProfile-pom.xml
+        ├── DemgphcScrn-pom.xml
+        ├── IssDvcAdmin-pom.xml
+        └── PartyAuth-pom.xml
+```
