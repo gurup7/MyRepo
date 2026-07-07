@@ -1,0 +1,94 @@
+# Dry-Run Prompts for GitHub Copilot Chat
+
+Copy-paste any of these prompts into GitHub Copilot Chat (in VS Code) to perform
+a dry-run remediation. Copilot will read the `.github/copilot-instructions.md`
+automatically.
+
+---
+
+## Prompt 1: Dry Run - Single Service
+
+```
+@workspace I need a DRY RUN of Snyk vulnerability remediation for the PartyAuth pom.xml.
+
+The Snyk report shows these vulnerabilities:
+- org.springframework:spring-core - Actual: 6.2.15, Expected: 6.2.19
+- org.springframework.retry:spring-retry - Actual: 2.0.11, Expected: 2.0.13
+- io.micrometer:micrometer-core - Actual: 1.14.6, Expected: 1.15.12
+
+DO NOT modify any files. Instead, show me:
+1. Which properties need to be added/updated in <properties>
+2. The exact XML diff (before → after)
+3. Any version mismatches you detect
+4. The mvn commands I should run to validate
+```
+
+---
+
+## Prompt 2: Dry Run - All Services
+
+```
+@workspace Perform a DRY RUN of Snyk remediation across ALL 6 microservice pom.xml files.
+
+For each service, show me:
+1. Current state of version properties
+2. What needs to be added/changed
+3. Any Boot version mismatches detected (4.x deps in 3.x project)
+4. Risk level (low/medium/high) for each change
+
+DO NOT modify any files. Output as a report table.
+```
+
+---
+
+## Prompt 3: Dry Run - Specific CVE
+
+```
+@workspace DRY RUN: Remediate CVE-2026-41851 (spring-core) across all services.
+
+Show the exact <properties> change needed for each pom.xml.
+Identify which services already have the fix and which need it.
+DO NOT modify files.
+```
+
+---
+
+## Prompt 4: Apply After Dry Run
+
+```
+@workspace Apply the Snyk remediation to PartyAuth pom.xml.
+
+Add these missing properties:
+- spring-framework.version = 6.2.19
+- spring-retry.version = 2.0.13
+- micrometer.version = 1.15.12
+
+Also remove the explicit version from spring-boot-starter-webmvc-test (it has 4.0.6 which is wrong for Boot 3).
+```
+
+---
+
+## Prompt 5: Validate After Applying
+
+```
+@workspace What mvn commands should I run to verify the Snyk remediation was applied correctly to PartyAuth? Show me the expected output for each command.
+```
+
+---
+
+## Setup Checklist
+
+Before running these prompts, ensure:
+
+1. [ ] Open the workspace containing all 6 service repos in VS Code
+2. [ ] Place `.github/copilot-instructions.md` at the workspace root
+3. [ ] Place `SKILL.md` at the workspace root (Copilot reads both)
+4. [ ] Have GitHub Copilot Chat extension installed and active
+5. [ ] Use `@workspace` prefix so Copilot reads the full workspace context
+
+## Tips
+
+- Start with Prompt 1 on a single service to verify Copilot understands the pattern
+- Compare Copilot's dry-run output against your Snyk report
+- Once satisfied, use Prompt 4 style to actually apply changes
+- Run `validate-remediation.ps1` after applying to confirm
