@@ -86,7 +86,7 @@ Write-Host "=" * 70 -ForegroundColor White
 Push-Location $ProjectDir
 
 try {
-    $totalSteps = if ($SkipTests) { 4 } else { 5 }
+    $totalSteps = if ($SkipTests) { 6 } else { 7 }
 
     # -------------------------------------------------------------------------
     # Step 1: Clean Compile
@@ -109,9 +109,71 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # Step 2: Verify key dependency versions
+    # Step 2: Verify JDK 21 migration (properties + compiler plugin)
     # -------------------------------------------------------------------------
-    Write-StepHeader 2 $totalSteps "Verifying resolved dependency versions"
+    Write-StepHeader 2 $totalSteps "Verifying JDK 17 → 21 migration"
+
+    $pomContent = Get-Content (Join-Path $ProjectDir "pom.xml") -Raw
+
+    # Check properties
+    $javaVersion = if ($pomContent -match '<java\.version>(\d+)</java\.version>') { $matches[1] } else { "not set" }
+    $compilerSource = if ($pomContent -match '<maven\.compiler\.source>(\d+)</maven\.compiler\.source>') { $matches[1] } else { "not set" }
+    $compilerTarget = if ($pomContent -match '<maven\.compiler\.target>(\d+)</maven\.compiler\.target>') { $matches[1] } else { "not set" }
+
+    # Check maven-compiler-plugin
+    $pluginSource = if ($pomContent -match '<plugin>[^<]*maven-compiler-plugin[\s\S]*?<source>(\d+)</source>') { $matches[1] } else { "not set" }
+    $pluginTarget = if ($pomContent -match '<plugin>[^<]*maven-compiler-plugin[\s\S]*?<target>(\d+)</target>') { $matches[1] } else { "not set" }
+
+    Write-Host "  java.version property     : $javaVersion" -ForegroundColor $(if ($javaVersion -eq "21") { "Green" } else { "Red" })
+    Write-Host "  maven.compiler.source     : $compilerSource" -ForegroundColor $(if ($compilerSource -eq "21") { "Green" } else { "Red" })
+    Write-Host "  maven.compiler.target     : $compilerTarget" -ForegroundColor $(if ($compilerTarget -eq "21") { "Green" } else { "Red" })
+    Write-Host "  compiler-plugin <source>  : $pluginSource" -ForegroundColor $(if ($pluginSource -eq "21") { "Green" } else { "Red" })
+    Write-Host "  compiler-plugin <target>  : $pluginTarget" -ForegroundColor $(if ($pluginTarget -eq "21") { "Green" } else { "Red" })
+
+    $jdkLocations = @($javaVersion, $compilerSource, $compilerTarget, $pluginSource, $pluginTarget)
+    $allJdk21 = ($jdkLocations | Where-Object { $_ -eq "21" }).Count -eq 5
+    if ($allJdk21) {
+        Write-Pass "All 5 JDK locations set to 21."
+    } else {
+        $remaining = ($jdkLocations | Where-Object { $_ -ne "21" -and $_ -ne "not set" }).Count
+        Write-Fail "JDK 21 migration incomplete. $remaining location(s) still on old version."
+    }
+    Write-Host ""
+
+    # -------------------------------------------------------------------------
+    # Step 3: Verify CVE remediation properties exist
+    # -------------------------------------------------------------------------
+    Write-StepHeader 3 $totalSteps "Checking CVE remediation properties in pom.xml"
+
+    $requiredProps = @(
+        @{ Name = "spring-framework.version"; Expected = "6.2.19" },
+        @{ Name = "spring-retry.version";     Expected = "2.0.13" },
+        @{ Name = "micrometer.version";       Expected = "1.15.12" },
+        @{ Name = "netty.version";            Expected = "4.1.135.Final" },
+        @{ Name = "tomcat.version";           Expected = "10.1.55" }
+    )
+
+    foreach ($prop in $requiredProps) {
+        $pattern = "<$($prop.Name)>(.*?)</$($prop.Name)>"
+        if ($pomContent -match $pattern) {
+            $actualValue = $matches[1]
+            if ($actualValue -eq $prop.Expected) {
+                Write-Host "  $($prop.Name) = $actualValue" -ForegroundColor Green
+            } else {
+                Write-Host "  $($prop.Name) = $actualValue (expected: $($prop.Expected))" -ForegroundColor Yellow
+                $script:WarnCount++
+            }
+        } else {
+            Write-Host "  $($prop.Name) = MISSING" -ForegroundColor Red
+            $script:FailCount++
+        }
+    }
+    Write-Host ""
+
+    # -------------------------------------------------------------------------
+    # Step 4: Verify key dependency versions via Maven
+    # -------------------------------------------------------------------------
+    Write-StepHeader 4 $totalSteps "Verifying resolved dependency versions (mvn dependency:tree)"
 
     $libraries = @(
         @{ Name = "Spring Framework"; Filter = "org.springframework:spring-core" },
@@ -134,9 +196,9 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # Step 3: Boot version mismatch detection
+    # Step 5: Boot version mismatch detection
     # -------------------------------------------------------------------------
-    Write-StepHeader 3 $totalSteps "Checking for Spring Boot version mismatches"
+    Write-StepHeader 5 $totalSteps "Checking for Spring Boot version mismatches"
 
     $depTree = & mvn dependency:tree -q 2>&1
     $mismatches = $depTree | Select-String -Pattern "spring-boot.*:4\.0"
@@ -148,9 +210,9 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # Step 4: Optional specific library check
+    # Step 6: Optional specific library check
     # -------------------------------------------------------------------------
-    Write-StepHeader 4 $totalSteps "Specific library check"
+    Write-StepHeader 6 $totalSteps "Specific library check"
 
     if ($LibraryFilter) {
         Write-Host "  Filter: $LibraryFilter" -ForegroundColor White
@@ -169,10 +231,10 @@ try {
     }
 
     # -------------------------------------------------------------------------
-    # Step 5: Run Tests
+    # Step 7: Run Tests
     # -------------------------------------------------------------------------
     if (-not $SkipTests) {
-        Write-StepHeader 5 $totalSteps "Running tests (mvn test)"
+        Write-StepHeader 7 $totalSteps "Running tests (mvn test)"
 
         $testOutput = & mvn test -q 2>&1
         if ($LASTEXITCODE -ne 0) {
