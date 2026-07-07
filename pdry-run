@@ -6,21 +6,23 @@ automatically.
 
 ---
 
-## Prompt 1: Dry Run - Single Service
+## Prompt 1: Dry Run - Single Service (Full Remediation)
 
 ```
-@workspace I need a DRY RUN of Snyk vulnerability remediation for the PartyAuth pom.xml.
+@workspace DRY RUN: Apply FULL Snyk remediation to the PartyAuth pom.xml.
 
-The Snyk report shows these vulnerabilities:
-- org.springframework:spring-core - Actual: 6.2.15, Expected: 6.2.19
-- org.springframework.retry:spring-retry - Actual: 2.0.11, Expected: 2.0.13
-- io.micrometer:micrometer-core - Actual: 1.14.6, Expected: 1.15.12
+This must include ALL of the following:
+1. JDK upgrade: java.version, maven.compiler.source, maven.compiler.target → 21
+2. Compiler plugin: <source> and <target> → 21
+3. Add CVE remediation properties (spring-framework.version, spring-retry.version, micrometer.version, netty.version, tomcat.version)
+4. Remove version mismatches (spring-boot-starter-webmvc-test has 4.0.6 — remove it)
+5. Update outdated direct dependencies (commons-io 2.21.0 → 2.22.0)
 
-DO NOT modify any files. Instead, show me:
-1. Which properties need to be added/updated in <properties>
-2. The exact XML diff (before → after)
-3. Any version mismatches you detect
-4. The mvn commands I should run to validate
+DO NOT modify any files. Show me:
+- The complete BEFORE and AFTER XML diff for <properties> section
+- The BEFORE and AFTER for maven-compiler-plugin
+- Any dependency version tags to remove
+- The mvn commands I should run to validate
 ```
 
 ---
@@ -28,15 +30,16 @@ DO NOT modify any files. Instead, show me:
 ## Prompt 2: Dry Run - All Services
 
 ```
-@workspace Perform a DRY RUN of Snyk remediation across ALL 6 microservice pom.xml files.
+@workspace DRY RUN: Apply FULL Snyk remediation across ALL 6 microservice pom.xml files.
 
-For each service, show me:
-1. Current state of version properties
-2. What needs to be added/changed
-3. Any Boot version mismatches detected (4.x deps in 3.x project)
-4. Risk level (low/medium/high) for each change
+For EACH service, show:
+1. JDK upgrade: 17 → 21 (all 5 locations)
+2. CVE properties to add (spring-framework, spring-retry, micrometer, netty, tomcat)
+3. Version mismatches to fix (spring-boot-starter-webmvc-test, spring-boot-starter-aop)
+4. Direct dependencies to update (commons-io, json, spring-kafka, mockito)
+5. Risk level (low/medium/high)
 
-DO NOT modify any files. Output as a report table.
+DO NOT modify any files. Output as a structured report per service.
 ```
 
 ---
@@ -44,34 +47,63 @@ DO NOT modify any files. Output as a report table.
 ## Prompt 3: Dry Run - Specific CVE
 
 ```
-@workspace DRY RUN: Remediate CVE-2026-41851 (spring-core) across all services.
+@workspace DRY RUN: Remediate CVE-2026-41851 (spring-core vulnerability, needs 6.2.19) across all 6 services.
 
 Show the exact <properties> change needed for each pom.xml.
+Also include the JDK 17→21 upgrade since it is part of the same remediation cycle.
 Identify which services already have the fix and which need it.
 DO NOT modify files.
 ```
 
 ---
 
-## Prompt 4: Apply After Dry Run
+## Prompt 4: Apply - Single Service
 
 ```
-@workspace Apply the Snyk remediation to PartyAuth pom.xml.
+@workspace Apply FULL Snyk remediation to PartyAuth pom.xml. This includes:
 
-Add these missing properties:
-- spring-framework.version = 6.2.19
-- spring-retry.version = 2.0.13
-- micrometer.version = 1.15.12
+1. Change java.version, maven.compiler.source, maven.compiler.target from 17 to 21
+2. Change maven-compiler-plugin <source> and <target> from 17 to 21
+3. Add these properties after the java version properties:
+   - spring-framework.version = 6.2.19
+   - spring-retry.version = 2.0.13
+   - micrometer.version = 1.15.12
+   - netty.version = 4.1.135.Final
+   - tomcat.version = 10.1.55
+4. Remove <version>4.0.6</version> from spring-boot-starter-webmvc-test
+5. Update commons-io from 2.21.0 to 2.22.0
 
-Also remove the explicit version from spring-boot-starter-webmvc-test (it has 4.0.6 which is wrong for Boot 3).
+Apply all changes to the pom.xml file.
 ```
 
 ---
 
-## Prompt 5: Validate After Applying
+## Prompt 5: Apply - All Services at Once
 
 ```
-@workspace What mvn commands should I run to verify the Snyk remediation was applied correctly to PartyAuth? Show me the expected output for each command.
+@workspace Apply FULL Snyk remediation to ALL 6 microservice pom.xml files.
+
+For every service:
+1. Upgrade JDK 17 → 21 (properties + compiler plugin)
+2. Add CVE remediation properties (spring-framework.version=6.2.19, spring-retry.version=2.0.13, micrometer.version=1.15.12, netty.version=4.1.135.Final, tomcat.version=10.1.55)
+3. Remove explicit versions on spring-boot-starter-webmvc-test and spring-boot-starter-aop
+4. Update commons-io to 2.22.0, org.json:json to 20240303 where outdated
+
+Apply changes to all pom.xml files.
+```
+
+---
+
+## Prompt 6: Validate After Applying
+
+```
+@workspace I've applied Snyk remediation to PartyAuth pom.xml. What mvn commands should I run to verify:
+1. JDK 21 is correctly set
+2. Spring Framework resolves to 6.2.19
+3. No Boot 4.x version mismatches remain
+4. Build compiles successfully
+
+Show me the commands and expected output for each.
 ```
 
 ---
@@ -82,13 +114,14 @@ Before running these prompts, ensure:
 
 1. [ ] Open the workspace containing all 6 service repos in VS Code
 2. [ ] Place `.github/copilot-instructions.md` at the workspace root
-3. [ ] Place `SKILL.md` at the workspace root (Copilot reads both)
-4. [ ] Have GitHub Copilot Chat extension installed and active
-5. [ ] Use `@workspace` prefix so Copilot reads the full workspace context
+3. [ ] Have GitHub Copilot Chat extension installed and active
+4. [ ] Use `@workspace` prefix so Copilot reads the full workspace context
 
 ## Tips
 
-- Start with Prompt 1 on a single service to verify Copilot understands the pattern
-- Compare Copilot's dry-run output against your Snyk report
-- Once satisfied, use Prompt 4 style to actually apply changes
-- Run `validate-remediation.ps1` after applying to confirm
+- Start with Prompt 1 on PartyAuth (simplest service with a known mismatch)
+- Verify Copilot shows `<java.version>21</java.version>` in the AFTER block
+- If Copilot misses the JDK upgrade, add "Remember: JDK 17→21 is mandatory" to the prompt
+- Once dry-run looks correct, use Prompt 4 to apply to one service
+- Run `.\validate-remediation.ps1 -ProjectDir <path>` after applying
+- Then use Prompt 5 to apply to all remaining services
