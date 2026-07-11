@@ -1,0 +1,34 @@
+Based on the screenshot, here is the list of application names:
+
+| #  | Application Name                                                                |
+| -- | ------------------------------------------------------------------------------- |
+| 1  | Appian-APAC (Wealth)                                                            |
+| 2  | TUBEMAP (Enterprise Services)                                                   |
+| 3  | Finance Services Automation Platform (FinSAP)                                   |
+| 4  | Citi Merchant Portal - APAC                                                     |
+| 5  | CITIComp                                                                        |
+| 6  | Enhanced Banking System - Nextgen - EMEA (Wealth)                               |
+| 7  | Enterprise Data Quality Platform (EDQP)                                         |
+| 8  | Customer Hub - EMEA                                                             |
+| 9  | Middle Office Trade Processing (MOTO)                                           |
+| 10 | CMS FX Option                                                                   |
+| 11 | Appian-EMEA (Wealth)                                                            |
+| 12 | DCC - APAC (Wealth)                                                             |
+| 13 | ICG Client Analytics                                                            |
+| 14 | Citialerts - ASIA (Wealth)                                                      |
+| 15 | 3DS Access Control Server - EMEA (Wealth)                                       |
+| 16 | Cross Product Utilities – APAC – Digital eStatements (Wealth)                   |
+| 17 | Universal Rate Server - EMEA                                                    |
+| 18 | Retail Risk and Wealth Risk Oversight Platform                                  |
+| 19 | System for Tax Authority Reporting - Hong Kong (Wealth)                         |
+| 20 | OneCMS Asia                                                                     |
+| 21 | RSCH (Banking Intl)                                                             |
+| 22 | DCC - EMEA (Wealth)                                                             |
+| 23 | Treasury Investment Management System (TIMS)                                    |
+| 24 | Citialerts - EMEA (Wealth)                                                      |
+| 25 | Enterprise Analytics Platform (EAP) - EMEA                                      |
+| 26 | Cross Product Utilities - Microservices - EMEA - Digital - eStatements (Wealth) |
+| 27 | Ace Digital and Retail                                                          |
+| 28 | Corporate Action and Custody Fee - Asia (IDD) (Wealth)                          |
+
+**Total applications:** **28**.
