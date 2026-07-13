@@ -1,0 +1,9 @@
+# Assets and Accelerators
+
+This repository contains reusable Skills, Prompts, Scripts and packaged assets developed by the Migration Factory team to accelerate Blueprinting and Execution activities.
+
+## Repository Structure
+
+(Insert the diagram here)
+
+Refer to **docs/Naming-Conventions.md** before contributing new assets.
