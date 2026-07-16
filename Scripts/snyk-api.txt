@@ -1,0 +1,34 @@
+# Get your token (you're already authenticated)
+snyk-win.exe config get api
+
+# Use the API to get the vulnerability report
+$token = "your-snyk-api-token"
+$orgId = "your-org-id"
+
+# List monitored projects
+$headers = @{
+    "Authorization" = "token $token"
+    "Content-Type" = "application/json"
+}
+
+$projects = Invoke-RestMethod `
+    -Uri "https://snyk.io/api/v1/org/$orgId/projects" `
+    -Headers $headers
+
+# Show project names and IDs
+$projects.projects | Select-Object name, id | Format-Table
+
+# Get issues for a specific project
+$projectId = "<project-id-from-above>"
+$issues = Invoke-RestMethod `
+    -Uri "https://snyk.io/api/v1/org/$orgId/project/$projectId/aggregated-issues" `
+    -Headers $headers -Method Post -Body '{}'
+
+# Extract the remediation table (same as your LSE gate)
+$issues.issues | Where-Object { $_.issueData.severity -in @('high','critical') } |
+    Select-Object @{N='Library';E={"pkg:maven/$($_.pkgName)"}},
+                  @{N='CVE';E={$_.issueData.identifiers.CVE -join ','}},
+                  @{N='Expected';E={$_.fixInfo.fixedIn -join ', '}},
+                  @{N='Actual';E={$_.pkgVersions -join ', '}},
+                  @{N='Severity';E={$_.issueData.severity}} |
+    Export-Csv -Path "snyk-remediation-tips.csv" -NoTypeInformation
