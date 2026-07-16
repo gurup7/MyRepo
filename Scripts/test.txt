@@ -1,1 +1,21 @@
 
+# Download spring-data-bom:3.5.12 from Maven Central into your local .m2
+$artifacts = @(
+    "org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom"
+)
+
+foreach ($a in $artifacts) {
+    $dest = Join-Path $env:USERPROFILE ".m2\repository\$a"
+    $dir = Split-Path $dest -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+    try {
+        Invoke-WebRequest -Uri "https://repo.maven.apache.org/maven2/$a" -OutFile $dest -ErrorAction Stop
+        # Clean failure markers
+        Get-ChildItem $dir -Filter "*.lastUpdated" | Remove-Item -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $dir "_remote.repositories") -Force -ErrorAction SilentlyContinue
+        Write-Host "OK: $a" -ForegroundColor Green
+    } catch {
+        Write-Host "FAILED: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
