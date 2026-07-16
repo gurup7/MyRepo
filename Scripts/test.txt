@@ -19,3 +19,7 @@ foreach ($a in $artifacts) {
         Write-Host "FAILED: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
+*******************
+mkdir -p ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12
+curl -o ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom "https://repo.maven.apache.org/maven2/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom"
+rm -f ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12/*.lastUpdated
