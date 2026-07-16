@@ -1,34 +1,7 @@
 
-# Download spring-data-bom:3.5.12 from Maven Central into your local .m2
-$artifacts = @(
-    "org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom"
-)
-
-foreach ($a in $artifacts) {
-    $dest = Join-Path $env:USERPROFILE ".m2\repository\$a"
-    $dir = Split-Path $dest -Parent
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-
-    try {
-        Invoke-WebRequest -Uri "https://repo.maven.apache.org/maven2/$a" -OutFile $dest -ErrorAction Stop
-        # Clean failure markers
-        Get-ChildItem $dir -Filter "*.lastUpdated" | Remove-Item -Force -ErrorAction SilentlyContinue
-        Remove-Item (Join-Path $dir "_remote.repositories") -Force -ErrorAction SilentlyContinue
-        Write-Host "OK: $a" -ForegroundColor Green
-    } catch {
-        Write-Host "FAILED: $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
-*******************
-mkdir -p ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12
-curl -o ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom "https://repo.maven.apache.org/maven2/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom"
-rm -f ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12/*.lastUpdated
-
-*************
-$dest = "$env:USERPROFILE\.m2\repository\org\springframework\data\spring-data-bom\3.5.12"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Invoke-WebRequest -Uri "https://repo.maven.apache.org/maven2/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom" -OutFile "$dest\spring-data-bom-3.5.12.pom"
-Get-ChildItem $dest -Filter "*.lastUpdated" | Remove-Item -Force -ErrorAction SilentlyContinue
-Remove-Item "$dest\_remote.repositories" -Force -ErrorAction SilentlyContinue
-Write-Host "Done" -ForegroundColor Green
-
+@echo off
+echo Downloading spring-data-bom:3.5.12...
+mkdir "%USERPROFILE%\.m2\repository\org\springframework\data\spring-data-bom\3.5.12" 2>nul
+curl -o "%USERPROFILE%\.m2\repository\org\springframework\data\spring-data-bom\3.5.12\spring-data-bom-3.5.12.pom" "https://repo.maven.apache.org/maven2/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom"
+del "%USERPROFILE%\.m2\repository\org\springframework\data\spring-data-bom\3.5.12\*.lastUpdated" 2>nul
+echo Done! Now retry: snyk-win.exe test
