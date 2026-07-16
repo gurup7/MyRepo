@@ -23,3 +23,12 @@ foreach ($a in $artifacts) {
 mkdir -p ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12
 curl -o ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom "https://repo.maven.apache.org/maven2/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom"
 rm -f ~/.m2/repository/org/springframework/data/spring-data-bom/3.5.12/*.lastUpdated
+
+*************
+$dest = "$env:USERPROFILE\.m2\repository\org\springframework\data\spring-data-bom\3.5.12"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Invoke-WebRequest -Uri "https://repo.maven.apache.org/maven2/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom" -OutFile "$dest\spring-data-bom-3.5.12.pom"
+Get-ChildItem $dest -Filter "*.lastUpdated" | Remove-Item -Force -ErrorAction SilentlyContinue
+Remove-Item "$dest\_remote.repositories" -Force -ErrorAction SilentlyContinue
+Write-Host "Done" -ForegroundColor Green
+
