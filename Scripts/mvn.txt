@@ -1,0 +1,17 @@
+# Check if Maven Central is reachable from your machine
+$url = "https://repo.maven.apache.org/maven2/org/springframework/data/spring-data-bom/3.5.12/spring-data-bom-3.5.12.pom"
+
+try {
+    $localPath = "$env:USERPROFILE\.m2\repository\org\springframework\data\spring-data-bom\3.5.12"
+    New-Item -ItemType Directory -Force -Path $localPath | Out-Null
+    Invoke-WebRequest -Uri $url -OutFile "$localPath\spring-data-bom-3.5.12.pom"
+
+    # Remove failed-download markers
+    Get-ChildItem $localPath -Filter "*.lastUpdated" -ErrorAction SilentlyContinue | Remove-Item -Force
+    Remove-Item "$localPath\_remote.repositories" -Force -ErrorAction SilentlyContinue
+
+    Write-Host "SUCCESS: Downloaded spring-data-bom:3.5.12" -ForegroundColor Green
+} catch {
+    Write-Host "BLOCKED: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "You need to ask Artifactory admin to mirror this artifact." -ForegroundColor Yellow
+}
