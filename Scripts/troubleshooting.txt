@@ -1,0 +1,42 @@
+$token = "your-token-here"
+$headers = @{ "Authorization" = "token $token" }
+
+# List your orgs
+$orgs = Invoke-RestMethod -Uri "https://snyk.io/api/v1/orgs" -Headers $headers
+$orgs.orgs | Select-Object name, id | Format-Table -AutoSize
+
+
+
+$token = "your-token-here"
+
+# Test 1: Check if token is valid at all
+try {
+    $me = Invoke-RestMethod -Uri "https://snyk.io/api/v1/user/me" `
+        -Headers @{ "Authorization" = "token $token" }
+    Write-Host "Token valid! User: $($me.username)" -ForegroundColor Green
+} catch {
+    Write-Host "Token INVALID: $($_.Exception.Message)" -ForegroundColor Red
+}
+snyk-win.exe config get endpoint
+$baseUrl = "https://snyk.citigroup.net/api"  # or whatever the endpoint shows
+$projects = Invoke-RestMethod -Uri "$baseUrl/v1/org/$orgId/projects" -Headers $headers
+*****************************
+Updated script to try
+$token = "your-token"
+
+# Auto-detect endpoint
+$endpoint = & .\snyk-win.exe config get endpoint 2>$null
+if (-not $endpoint) { $endpoint = "https://snyk.io/api" }
+$endpoint = $endpoint.TrimEnd('/')
+
+$headers = @{ "Authorization" = "token $token" }
+
+# Step 1: Verify token
+Write-Host "Testing token..." -ForegroundColor Cyan
+$me = Invoke-RestMethod -Uri "$endpoint/v1/user/me" -Headers $headers
+Write-Host "Authenticated as: $($me.username)" -ForegroundColor Green
+
+# Step 2: List orgs
+Write-Host "`nAvailable orgs:" -ForegroundColor Cyan
+$orgs = Invoke-RestMethod -Uri "$endpoint/v1/orgs" -Headers $headers
+$orgs.orgs | Select-Object name, id | Format-Table -AutoSize
