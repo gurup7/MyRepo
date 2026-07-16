@@ -1,34 +1,39 @@
-# Get your token (you're already authenticated)
-snyk-win.exe config get api
-
 # Use the API to get the vulnerability report
-$token = "your-snyk-api-token"
-$orgId = "your-org-id"
+$token = "your-token-here"
+$orgId = "7dfd2c7-3796-4e74-b1d2-eff81e98d6cf"
 
-# List monitored projects
 $headers = @{
     "Authorization" = "token $token"
-    "Content-Type" = "application/json"
+    "Content-Type"  = "application/json"
 }
 
+# List monitored projects — use POST with empty filters (enterprise orgs require this)
 $projects = Invoke-RestMethod `
     -Uri "https://snyk.io/api/v1/org/$orgId/projects" `
-    -Headers $headers
+    -Headers $headers `
+    -Method Post `
+    -Body '{"filters":{}}'
 
 # Show project names and IDs
-$projects.projects | Select-Object name, id | Format-Table
+$projects.projects | Select-Object name, id | Format-Table -AutoSize
 
-# Get issues for a specific project
-$projectId = "<project-id-from-above>"
+# Get issues for a specific project (use first project or pick one)
+$projectId = $projects.projects[0].id
+Write-Host "Fetching issues for: $($projects.projects[0].name)" -ForegroundColor Cyan
+
 $issues = Invoke-RestMethod `
     -Uri "https://snyk.io/api/v1/org/$orgId/project/$projectId/aggregated-issues" `
-    -Headers $headers -Method Post -Body '{}'
+    -Headers $headers `
+    -Method Post `
+    -Body '{}'
 
 # Extract the remediation table (same as your LSE gate)
 $issues.issues | Where-Object { $_.issueData.severity -in @('high','critical') } |
     Select-Object @{N='Library';E={"pkg:maven/$($_.pkgName)"}},
-                  @{N='CVE';E={$_.issueData.identifiers.CVE -join ','}},
+                  @{N='CVE';E={$_.issueData.identifiers.CVE -join ', '}},
                   @{N='Expected';E={$_.fixInfo.fixedIn -join ', '}},
                   @{N='Actual';E={$_.pkgVersions -join ', '}},
                   @{N='Severity';E={$_.issueData.severity}} |
     Export-Csv -Path "snyk-remediation-tips.csv" -NoTypeInformation
+
+Write-Host "Done! Exported to snyk-remediation-tips.csv" -ForegroundColor Green
