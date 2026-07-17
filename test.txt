@@ -1,0 +1,1 @@
+https://marketplace.visualstudio.com/_apis/public/gallery/publishers/AmazonWebServices/vsextensions/aws-transform-plugin/1.0.6/vspackage
