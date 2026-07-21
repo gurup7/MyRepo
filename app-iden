@@ -1,3 +1,40 @@
+
+Hi Squad Leads,
+
+As part of our AI-driven engineering productivity initiative, we have developed a set of reusable assets to help accelerate common development and remediation activities. These assets include a combination of **Skills, Prompts, and Scripts** that can be leveraged within AI-assisted development workflows.
+
+This has been a collaborative effort, and I would like to thank everyone who contributed towards building these reusable assets.
+
+We request each squad to **try out the relevant assets, validate them on your applications, and provide your feedback**. Your inputs are important to help us improve and standardize these accelerators before wider adoption.
+
+The assets are organized into the following categories:
+
+| Category                  | Applications                 | Link                             |
+| ------------------------- | ---------------------------- | -------------------------------- |
+| **Snyk Remediation**      | Application 1, Application 2 | <SharePoint/Git Repository Link> |
+| **SonarQube Remediation** | Application 1, Application 2 | <SharePoint/Git Repository Link> |
+| **JUnit/Test Coverage**   | Application 1, Application 2 | <SharePoint/Git Repository Link> |
+
+While testing, it would be helpful if you could validate:
+
+* Accuracy and quality of the generated output
+* Ease of use and clarity of instructions
+* Any issues, edge cases, or limitations encountered
+* Suggestions for improvement or additional capabilities
+
+Since these assets are in the early stages, you may encounter a few initial **gotchas** or scenarios where the output is not as expected. That is completely anticipated at this stage. Your feedback will help us refine the assets, improve their reliability, and make them more reusable across applications.
+
+Please share your feedback by **<date>** so that we can consolidate the inputs and incorporate the necessary enhancements.
+
+Thank you in advance for your support and participation. Looking forward to your valuable feedback.
+
+Regards,
+
+Guruprakash Subbarao
+AI Assets Initiative Lead
+
+**********************
+
 SnyK
 
 Enterprise Analytics Platform (EAP) - EMEA (Sreeni) 
