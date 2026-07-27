@@ -1,0 +1,22 @@
+Hi Team,
+
+As part of our ongoing planning and validation activities, I would like to revalidate the current assumptions for the two retail applications regarding their JDK and Spring Boot versions.
+
+Based on our current understanding:
+
+1. **Risk Entitlement Service**
+
+   * The application will remain on **Spring Boot 3.5.14** and **cannot be upgraded** further.
+   * The application will continue to use **JDK 17**.
+
+2. **ACE Digital**
+
+   * The application team has upgraded **Spring Boot from 3.5.11 to 3.5.15**, in alignment with the **CCP framework**.
+   * The application will continue to use **JDK 17**.
+
+Could you please confirm that the above assumptions are accurate? If there have been any changes or if additional upgrades are planned, kindly let us know so that we can align our modernization and containerization activities accordingly.
+
+We would appreciate your confirmation at your earliest convenience.
+
+Thanks & Regards,
+Guruprakash
