@@ -1,0 +1,36 @@
+What is the AI Merge Tool?
+
+The AI Merge Tool is an automated conflict resolution solution designed to streamline the process of merging code branches.  It incorporates AI capabilities along with integrated skills and scripts to intelligently handle merge conflicts that occur during code integration.
+Problems It Solves
+
+The tool addresses several key challenges in code merging: 
+
+    Automatic Conflict Resolution: Eliminates manual conflict resolution by automatically suggesting resolutions using a three-way merge reasoning model (comparing the base branch, source branch, and target branch)
+    Visibility into Changes: Provides analysis of overlapping files and changes made by different teams during merging
+    Safe Review Process: Enables local merging without immediate commits, allowing human reviewers to validate decisions before finalizing
+    Detailed Documentation: Generates comprehensive HTML reports explaining what changes were made and why, including reasoning notes and risk assessments
+
+How to Use It
+
+Basic Invocation: 
+Simply type the command AI merge to start the tool, which will prompt you for required inputs:
+
+    Repository name
+    Source branch
+    Target branch
+
+Operating Modes: 
+
+    Analysis Mode: For reviewing conflicts, overlapping files, and understanding what changes were applied
+    Default Mode: For performing local merges that you can review and then commit
+
+Workflow: 
+
+     Check out the branch and create pre-merge snapshots
+     Extract conflicts
+     Perform automatic AI-driven resolution
+     Review the generated HTML report and reasoning
+     Manually verify if needed (especially for high-risk files)
+     Approve and commit once validated
+
+The tool ensures safety by operating in local, non-committed mode, allowing reviewers to inspect and revert changes as needed before pushing to the repository. 
