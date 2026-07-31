@@ -12,8 +12,47 @@ if (-not $token) {
 
 $headers = @{ Authorization = "Bearer $token" }
 
+# Function to extract smart excerpts around keyword matches
+function Get-SmartExcerpt {
+    param(
+        [string]$FullText,
+        [string]$SearchQuery,
+        [int]$MaxLength = 4000
+    )
+    
+    $keywords = $SearchQuery -split '\s+' | Where-Object { $_.Length -gt 2 }
+    $chunks = @()
+    
+    foreach ($keyword in $keywords) {
+        $index = $FullText.IndexOf($keyword, [System.StringComparison]::OrdinalIgnoreCase)
+        if ($index -ge 0) {
+            # Grab 500 chars before and after the keyword match
+            $start = [Math]::Max(0, $index - 500)
+            $end = [Math]::Min($FullText.Length, $index + $keyword.Length + 500)
+            $chunk = $FullText.Substring($start, $end - $start)
+            if ($chunks -notcontains $chunk) {
+                $chunks += $chunk
+            }
+        }
+    }
+    
+    # Combine keyword-context chunks
+    $smartExcerpt = $chunks -join "`n---`n"
+    
+    # If no keyword matches found, or excerpt is too short, use beginning of text
+    if ($smartExcerpt.Length -lt 200) {
+        $smartExcerpt = $FullText.Substring(0, [Math]::Min($MaxLength, $FullText.Length))
+    }
+    
+    # Trim to max length
+    if ($smartExcerpt.Length -gt $MaxLength) {
+        $smartExcerpt = $smartExcerpt.Substring(0, $MaxLength)
+    }
+    
+    return $smartExcerpt
+}
+
 # Use the search/site endpoint which returns results ranked by RELEVANCE
-# This is Confluence's native search (same as the UI search box)
 $encodedQuery = [uri]::EscapeDataString($query)
 $url = "$baseUrl/rest/api/search?cql=siteSearch+~+""$encodedQuery""+AND+type=page&limit=10&expand=content.version,content.body.storage"
 
@@ -33,7 +72,7 @@ try {
         exit
     }
 
-    # Sort by relevance (API default) then filter: keep only pages from last 2 years
+    # Filter: keep only pages from last 2 years
     $cutoffDate = (Get-Date).AddYears(-2)
     $recentResults = $results.results | Where-Object {
         [datetime]$_.version.when -gt $cutoffDate
@@ -49,8 +88,8 @@ try {
     $output = @()
     foreach ($page in $recentResults) {
         $bodyText = ($page.body.storage.value -replace '<[^>]+>','')
-        $excerptLength = [Math]::Min(1500, $bodyText.Length)
         $links = $page._links
+        $excerpt = Get-SmartExcerpt -FullText $bodyText -SearchQuery $query
 
         Write-Host "  - $($page.title) (Modified: $($page.version.when))" -ForegroundColor White
 
@@ -58,11 +97,11 @@ try {
             Title        = $page.title
             URL          = $baseUrl + $links.webui
             LastModified = $page.version.when
-            Excerpt      = $bodyText.Substring(0, $excerptLength)
+            Excerpt      = $excerpt
         }
     }
 
-    $output | ConvertTo-Json | Out-File "confluence-results.json"
+    $output | ConvertTo-Json -Depth 3 | Out-File "confluence-results.json" -Encoding UTF8
     Write-Host "`nDone. Results saved to confluence-results.json" -ForegroundColor Green
     exit
 }
@@ -76,8 +115,8 @@ $output = @()
 foreach ($item in $searchResults) {
     $page = $item.content
     $bodyText = ($page.body.storage.value -replace '<[^>]+>','')
-    $excerptLength = [Math]::Min(1500, $bodyText.Length)
     $links = $page._links
+    $excerpt = Get-SmartExcerpt -FullText $bodyText -SearchQuery $query
 
     Write-Host "  - $($page.title) (Modified: $($page.version.when))" -ForegroundColor White
 
@@ -85,9 +124,9 @@ foreach ($item in $searchResults) {
         Title        = $page.title
         URL          = $baseUrl + $links.webui
         LastModified = $page.version.when
-        Excerpt      = $bodyText.Substring(0, $excerptLength)
+        Excerpt      = $excerpt
     }
 }
 
-$output | ConvertTo-Json | Out-File "confluence-results.json"
+$output | ConvertTo-Json -Depth 3 | Out-File "confluence-results.json" -Encoding UTF8
 Write-Host "`nDone. Results saved to confluence-results.json" -ForegroundColor Green
