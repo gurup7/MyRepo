@@ -12,39 +12,69 @@ if (-not $token) {
 
 $headers = @{ Authorization = "Bearer $token" }
 
-# Strategy 1: Search in title first (most relevant)
-$cqlTitle = "type=page AND title ~ ""$query"" ORDER BY lastModified DESC"
-Write-Host "Searching titles: $cqlTitle" -ForegroundColor Cyan
+# Use the search/site endpoint which returns results ranked by RELEVANCE
+# This is Confluence's native search (same as the UI search box)
+$encodedQuery = [uri]::EscapeDataString($query)
+$url = "$baseUrl/rest/api/search?cql=siteSearch+~+""$encodedQuery""+AND+type=page&limit=10&expand=content.version,content.body.storage"
 
-$encodedCql = [uri]::EscapeDataString($cqlTitle)
-$url = "$baseUrl/rest/api/content/search?cql=$encodedCql&limit=5&expand=body.storage,version"
-$results = Invoke-RestMethod -Uri $url -Headers $headers
+Write-Host "Searching for: $query" -ForegroundColor Cyan
 
-# Strategy 2: If not enough title results, search body with exact phrase
-if (-not $results.results -or $results.results.Count -lt 3) {
-    Write-Host "Few title matches. Searching body with phrase..." -ForegroundColor Yellow
-    $cqlBody = "type=page AND text ~ ""$query"" ORDER BY lastModified DESC"
-    $encodedCql = [uri]::EscapeDataString($cqlBody)
-    $url = "$baseUrl/rest/api/content/search?cql=$encodedCql&limit=5&expand=body.storage,version"
-    $bodyResults = Invoke-RestMethod -Uri $url -Headers $headers
+try {
+    $results = Invoke-RestMethod -Uri $url -Headers $headers
+} catch {
+    # Fallback: use content search with relevance (no ORDER BY = relevance ranked)
+    Write-Host "Trying alternate search..." -ForegroundColor Yellow
+    $cql = [uri]::EscapeDataString("type=page AND text ~ ""$query""")
+    $url = "$baseUrl/rest/api/content/search?cql=$cql&limit=10&expand=body.storage,version"
+    $results = Invoke-RestMethod -Uri $url -Headers $headers
+    
+    if (-not $results.results -or $results.results.Count -eq 0) {
+        Write-Host "No results found." -ForegroundColor Yellow
+        exit
+    }
 
-    # Merge results (title matches first, then body matches)
-    $existingIds = $results.results | ForEach-Object { $_.id }
-    $newResults = $bodyResults.results | Where-Object { $existingIds -notcontains $_.id }
-    $allResults = @($results.results) + @($newResults) | Select-Object -First 5
-} else {
-    $allResults = $results.results
-}
+    # Sort by relevance (API default) then filter: keep only pages from last 2 years
+    $cutoffDate = (Get-Date).AddYears(-2)
+    $recentResults = $results.results | Where-Object {
+        [datetime]$_.version.when -gt $cutoffDate
+    } | Select-Object -First 5
 
-if (-not $allResults -or $allResults.Count -eq 0) {
-    Write-Host "No results found. Try different keywords." -ForegroundColor Yellow
+    if (-not $recentResults -or $recentResults.Count -eq 0) {
+        Write-Host "No recent results. Showing all results:" -ForegroundColor Yellow
+        $recentResults = $results.results | Select-Object -First 5
+    }
+
+    Write-Host "Found $($recentResults.Count) results:" -ForegroundColor Green
+
+    $output = @()
+    foreach ($page in $recentResults) {
+        $bodyText = ($page.body.storage.value -replace '<[^>]+>','')
+        $excerptLength = [Math]::Min(1500, $bodyText.Length)
+        $links = $page._links
+
+        Write-Host "  - $($page.title) (Modified: $($page.version.when))" -ForegroundColor White
+
+        $output += [PSCustomObject]@{
+            Title        = $page.title
+            URL          = $baseUrl + $links.webui
+            LastModified = $page.version.when
+            Excerpt      = $bodyText.Substring(0, $excerptLength)
+        }
+    }
+
+    $output | ConvertTo-Json | Out-File "confluence-results.json"
+    Write-Host "`nDone. Results saved to confluence-results.json" -ForegroundColor Green
     exit
 }
 
-Write-Host "Found $($allResults.Count) results:" -ForegroundColor Green
+# Handle siteSearch response format
+$searchResults = $results.results | Select-Object -First 5
+
+Write-Host "Found $($searchResults.Count) results:" -ForegroundColor Green
 
 $output = @()
-foreach ($page in $allResults) {
+foreach ($item in $searchResults) {
+    $page = $item.content
     $bodyText = ($page.body.storage.value -replace '<[^>]+>','')
     $excerptLength = [Math]::Min(1500, $bodyText.Length)
     $links = $page._links
