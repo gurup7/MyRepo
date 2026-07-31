@@ -1,6 +1,7 @@
 # search-confluence.ps1
 $query = Read-Host "Enter search query"
 $baseUrl = "https://cedt-confluence.nam.nsroot.net/confluence"
+
 # Token handling: prompt once, store in env for session
 $token = $env:CONFLUENCE_TOKEN
 if (-not $token) {
@@ -9,32 +10,41 @@ if (-not $token) {
     Write-Host "Token stored for this session. You won't be prompted again." -ForegroundColor Green
 }
 
-# Split query into keywords, remove stop words, require ALL remaining (AND logic)
-$stopWords = @('how','what','when','where','why','who','which','the','for','and','are','was','were','can','could','should','would','does','this','that','with','from','have','has','not','but','will','into','about','than','then','also','just','only','any','all','our','your','out','get','got','let','may')
-$keywords = $query -split '\s+' | Where-Object { $_.Length -gt 2 -and $stopWords -notcontains $_.ToLower() }
-$cqlParts = $keywords | ForEach-Object { "text ~ ""$_""" }
-$cqlFilter = $cqlParts -join " AND "
-
-# Search: must contain ALL keywords, sorted by most recently modified
-$cql = "type=page AND $cqlFilter ORDER BY lastModified DESC"
-
-Write-Host "CQL: $cql" -ForegroundColor Cyan
-
-$encodedCql = [uri]::EscapeDataString($cql)
-$url = "$baseUrl/rest/api/content/search?cql=$encodedCql&limit=5&expand=body.storage,version"
-
 $headers = @{ Authorization = "Bearer $token" }
+
+# Strategy 1: Search in title first (most relevant)
+$cqlTitle = "type=page AND title ~ ""$query"" ORDER BY lastModified DESC"
+Write-Host "Searching titles: $cqlTitle" -ForegroundColor Cyan
+
+$encodedCql = [uri]::EscapeDataString($cqlTitle)
+$url = "$baseUrl/rest/api/content/search?cql=$encodedCql&limit=5&expand=body.storage,version"
 $results = Invoke-RestMethod -Uri $url -Headers $headers
 
-if (-not $results.results -or $results.results.Count -eq 0) {
+# Strategy 2: If not enough title results, search body with exact phrase
+if (-not $results.results -or $results.results.Count -lt 3) {
+    Write-Host "Few title matches. Searching body with phrase..." -ForegroundColor Yellow
+    $cqlBody = "type=page AND text ~ ""$query"" ORDER BY lastModified DESC"
+    $encodedCql = [uri]::EscapeDataString($cqlBody)
+    $url = "$baseUrl/rest/api/content/search?cql=$encodedCql&limit=5&expand=body.storage,version"
+    $bodyResults = Invoke-RestMethod -Uri $url -Headers $headers
+
+    # Merge results (title matches first, then body matches)
+    $existingIds = $results.results | ForEach-Object { $_.id }
+    $newResults = $bodyResults.results | Where-Object { $existingIds -notcontains $_.id }
+    $allResults = @($results.results) + @($newResults) | Select-Object -First 5
+} else {
+    $allResults = $results.results
+}
+
+if (-not $allResults -or $allResults.Count -eq 0) {
     Write-Host "No results found. Try different keywords." -ForegroundColor Yellow
     exit
 }
 
-Write-Host "Found $($results.results.Count) results:" -ForegroundColor Green
+Write-Host "Found $($allResults.Count) results:" -ForegroundColor Green
 
 $output = @()
-foreach ($page in $results.results) {
+foreach ($page in $allResults) {
     $bodyText = ($page.body.storage.value -replace '<[^>]+>','')
     $excerptLength = [Math]::Min(1500, $bodyText.Length)
     $links = $page._links
