@@ -9,8 +9,9 @@ if (-not $token) {
     Write-Host "Token stored for this session. You won't be prompted again." -ForegroundColor Green
 }
 
-# Split query into keywords and require ALL of them (AND logic)
-$keywords = $query -split '\s+' | Where-Object { $_.Length -gt 2 }
+# Split query into keywords, remove stop words, require ALL remaining (AND logic)
+$stopWords = @('how','what','when','where','why','who','which','the','for','and','are','was','were','can','could','should','would','does','this','that','with','from','have','has','not','but','will','into','about','than','then','also','just','only','any','all','our','your','out','get','got','let','may')
+$keywords = $query -split '\s+' | Where-Object { $_.Length -gt 2 -and $stopWords -notcontains $_.ToLower() }
 $cqlParts = $keywords | ForEach-Object { "text ~ ""$_""" }
 $cqlFilter = $cqlParts -join " AND "
 
