@@ -1,22 +1,24 @@
 # search-confluence.ps1
-$query = "CMP request"
+$query = Read-Host "Enter search query"
 $baseUrl = "https://cedt-confluence.nam.nsroot.net/confluence"
-$token = $env:CONFLUENCE_TOKEN
+$token = Read-Host "Enter your Confluence token"
 
 $headers = @{ Authorization = "Bearer $token" }
 $cql = "type=page AND text~""$query"" ORDER BY lastModified DESC"
 $url = "$baseUrl/rest/api/content/search?cql=$cql&limit=5&expand=body.storage,version"
 
 $results = Invoke-RestMethod -Uri $url -Headers $headers
-$results.results | ForEach-Object {
-    $bodyText = ($_.body.storage.value -replace '<[^>]+>','')
+$output = @()
+foreach ($page in $results.results) {
+    $bodyText = ($page.body.storage.value -replace '<[^>]+>','')
     $excerptLength = [Math]::Min(1500, $bodyText.Length)
-    [PSCustomObject]@{
-        Title        = $_.title
-        URL          = $baseUrl + $_._links.webui
-        LastModified = $_.version.when
+    $links = $page._links
+    $output += [PSCustomObject]@{
+        Title        = $page.title
+        URL          = $baseUrl + $links.webui
+        LastModified = $page.version.when
         Excerpt      = $bodyText.Substring(0, $excerptLength)
     }
-} | ConvertTo-Json | Out-File "confluence-results.json"
-
+}
+$output | ConvertTo-Json | Out-File "confluence-results.json"
 Write-Host "Done. Results saved to confluence-results.json"
