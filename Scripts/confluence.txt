@@ -1,22 +1,45 @@
 # search-confluence.ps1
 $query = Read-Host "Enter search query"
 $baseUrl = "https://cedt-confluence.nam.nsroot.net/confluence"
+# Token handling: prompt once, store in env for session
 $token = $env:CONFLUENCE_TOKEN
 if (-not $token) {
-    Write-Host "Error: CONFLUENCE_TOKEN not set. Run: `$env:CONFLUENCE_TOKEN = 'your-token-here'" -ForegroundColor Red
+    $token = Read-Host "Enter your Confluence token (will be stored for this session)"
+    $env:CONFLUENCE_TOKEN = $token
+    Write-Host "Token stored for this session. You won't be prompted again." -ForegroundColor Green
+}
+
+# Split query into keywords and require ALL of them (AND logic)
+$keywords = $query -split '\s+' | Where-Object { $_.Length -gt 2 }
+$cqlParts = $keywords | ForEach-Object { "text ~ ""$_""" }
+$cqlFilter = $cqlParts -join " AND "
+
+# Search: must contain ALL keywords, sorted by most recently modified
+$cql = "type=page AND $cqlFilter ORDER BY lastModified DESC"
+
+Write-Host "CQL: $cql" -ForegroundColor Cyan
+
+$encodedCql = [uri]::EscapeDataString($cql)
+$url = "$baseUrl/rest/api/content/search?cql=$encodedCql&limit=5&expand=body.storage,version"
+
+$headers = @{ Authorization = "Bearer $token" }
+$results = Invoke-RestMethod -Uri $url -Headers $headers
+
+if (-not $results.results -or $results.results.Count -eq 0) {
+    Write-Host "No results found. Try different keywords." -ForegroundColor Yellow
     exit
 }
 
-$headers = @{ Authorization = "Bearer $token" }
-$cql = "type=page AND text~""$query"" ORDER BY lastModified DESC"
-$url = "$baseUrl/rest/api/content/search?cql=$cql&limit=5&expand=body.storage,version"
+Write-Host "Found $($results.results.Count) results:" -ForegroundColor Green
 
-$results = Invoke-RestMethod -Uri $url -Headers $headers
 $output = @()
 foreach ($page in $results.results) {
     $bodyText = ($page.body.storage.value -replace '<[^>]+>','')
     $excerptLength = [Math]::Min(1500, $bodyText.Length)
     $links = $page._links
+
+    Write-Host "  - $($page.title) (Modified: $($page.version.when))" -ForegroundColor White
+
     $output += [PSCustomObject]@{
         Title        = $page.title
         URL          = $baseUrl + $links.webui
@@ -24,5 +47,6 @@ foreach ($page in $results.results) {
         Excerpt      = $bodyText.Substring(0, $excerptLength)
     }
 }
+
 $output | ConvertTo-Json | Out-File "confluence-results.json"
-Write-Host "Done. Results saved to confluence-results.json"
+Write-Host "`nDone. Results saved to confluence-results.json" -ForegroundColor Green
