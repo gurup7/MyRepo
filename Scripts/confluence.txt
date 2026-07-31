@@ -1,7 +1,11 @@
 # search-confluence.ps1
 $query = Read-Host "Enter search query"
 $baseUrl = "https://cedt-confluence.nam.nsroot.net/confluence"
-$token = Read-Host "Enter your Confluence token"
+$token = $env:CONFLUENCE_TOKEN
+if (-not $token) {
+    Write-Host "Error: CONFLUENCE_TOKEN not set. Run: `$env:CONFLUENCE_TOKEN = 'your-token-here'" -ForegroundColor Red
+    exit
+}
 
 $headers = @{ Authorization = "Bearer $token" }
 $cql = "type=page AND text~""$query"" ORDER BY lastModified DESC"
