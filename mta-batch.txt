@@ -97,11 +97,21 @@ Write-Host "[Step 3] Creating applications and triggering analysis...`n" -Foregr
 $results = @()
 
 foreach ($app in $apps) {
+    # Auto-append .git if not present
+    $gitUrl = $app.GitUrl.Trim()
+    if (-not $gitUrl.EndsWith(".git")) {
+        $gitUrl = "$gitUrl.git"
+    }
+
     # Derive component name from git URL (last part before .git)
-    $componentName = ($app.GitUrl -split '/')[-1] -replace '\.git$', ''
-    $mtaAppName = "$($app.AppName)-$componentName"
+    $componentName = ($gitUrl -split '/')[-1] -replace '\.git$', ''
+    if (-not $componentName) {
+        $componentName = "component-$($apps.IndexOf($app))"
+    }
+    $mtaAppName = "$($app.AppName.Trim())-$componentName"
 
     Write-Host "--- Processing: $mtaAppName ---" -ForegroundColor Yellow
+    Write-Host "  Git URL: $gitUrl" -ForegroundColor Gray
 
     # 3a. Create Application
     $appPayload = @{
@@ -109,7 +119,7 @@ foreach ($app in $apps) {
         description = "CSI ID: $($app.CSIID) | Component: $componentName"
         repository  = @{
             kind   = "git"
-            url    = $app.GitUrl
+            url    = $gitUrl
             branch = $app.Branch
         }
         identities = @(
@@ -126,11 +136,14 @@ foreach ($app in $apps) {
         $appId = $appResponse.id
         Write-Host "  Application created. ID: $appId" -ForegroundColor Green
     } catch {
-        # Check if already exists
-        $existing = $existingApps | Where-Object { $_.name -eq $mtaAppName }
+        # 409 Conflict = app already exists, refresh list and find it
+        Write-Host "  App may already exist. Looking up..." -ForegroundColor Yellow
+        $allApps = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+            -Method GET -ContentType "application/json" -UseDefaultCredentials
+        $existing = $allApps | Where-Object { $_.name -eq $mtaAppName }
         if ($existing) {
             $appId = $existing.id
-            Write-Host "  Application already exists. ID: $appId" -ForegroundColor Green
+            Write-Host "  Found existing application. ID: $appId" -ForegroundColor Green
         } else {
             Write-Host "  Failed to create: $($_.Exception.Message)" -ForegroundColor Red
             $results += [PSCustomObject]@{
@@ -146,7 +159,7 @@ foreach ($app in $apps) {
         description = "CSI ID: $($app.CSIID) | Component: $componentName"
         repository  = @{
             kind   = "git"
-            url    = $app.GitUrl
+            url    = $gitUrl
             branch = $app.Branch
         }
         identities = @(
@@ -256,14 +269,13 @@ Write-Host "`n[Step 5] Fetching reports..." -ForegroundColor Cyan
 
 foreach ($task in $results) {
     if ($task.Status -like "Succeeded*") {
-        $reportFile = "$($task.Component)-report.yaml"
+        $reportFile = "$($task.Component)-report.zip"
         try {
-            $report = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis" `
-                -Method GET -Headers @{ Accept = "application/x-yaml" } `
-                -UseDefaultCredentials -UseBasicParsing
-            $report.Content | Out-File $reportFile -Encoding UTF8
+            Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis/report" `
+                -Method GET -UseDefaultCredentials -UseBasicParsing `
+                -OutFile $reportFile
             $task.Report = $reportFile
-            Write-Host "  $($task.Component): Report saved -> $reportFile" -ForegroundColor Green
+            Write-Host "  $($task.Component): HTML report saved -> $reportFile" -ForegroundColor Green
         } catch {
             Write-Host "  $($task.Component): Could not fetch report: $($_.Exception.Message)" -ForegroundColor Yellow
             $task.Report = "Fetch failed"
