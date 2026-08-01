@@ -1,0 +1,425 @@
+# =============================================================================
+# MTA Pipeline - End-to-End Automation
+# Step 0: Setup Copilot instructions
+# Step 1: Read CSV, create apps, link credentials
+# Step 2: Trigger all analyses
+# Step 3: Poll until all complete
+# Step 4: Generate consolidated CSV report
+# Step 5: Download HTML reports (.tar)
+# =============================================================================
+
+# --- Configuration ---
+$mtaBaseUrl = "https://mta-openshift-mta.apps.ilab-ctigtdc12d.ecs.dyn.nsroot.net"
+$csvFile = "apps.csv"
+$outputCsv = "mta-consolidated-report.csv"
+$summaryFile = "mta-app-summary.csv"
+
+# --- SSL Certificate Bypass ---
+if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
+    Add-Type @"
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+public class TrustAllCertsPolicy : ICertificatePolicy {
+    public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) { return true; }
+}
+"@
+}
+[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+Write-Host "=============================================" -ForegroundColor Cyan
+Write-Host "  MTA Pipeline - End-to-End Automation" -ForegroundColor Cyan
+Write-Host "=============================================" -ForegroundColor Cyan
+
+# =============================================================================
+# STEP 0: Setup .github/copilot-instructions.md
+# =============================================================================
+Write-Host "`n[Step 0] Setting up Copilot instructions..." -ForegroundColor Cyan
+
+$githubDir = ".github"
+$instructionsFile = "$githubDir\copilot-instructions.md"
+
+if (Test-Path $instructionsFile) {
+    Write-Host "  Copilot instructions already exist. Skipping." -ForegroundColor Green
+} else {
+    if (-not (Test-Path $githubDir)) {
+        New-Item -ItemType Directory -Path $githubDir -Force | Out-Null
+    }
+
+    $instructionsContent = @"
+# MTA Analysis Report Expert
+
+You are an expert in Red Hat Migration Toolkit for Applications (RHMTA/MTA) analysis reports. When the user provides an MTA HTML report or YAML report content, you should:
+
+## Your Role
+- Analyze MTA migration analysis reports for Java and Spring Boot upgrade scenarios
+- Identify critical migration issues, mandatory changes, and optional improvements
+- Prioritize findings by effort and impact
+- Provide actionable remediation guidance
+
+## When Analyzing MTA Reports
+
+### 1. Categorize Issues by Severity
+- **Mandatory** - Must fix for migration to succeed (blocking issues)
+- **Optional** - Recommended improvements (non-blocking)
+- **Information** - Awareness items, no action required
+
+### 2. Group Findings By
+- **Category**: Cloud Readiness, Java Version, Spring Boot, Dependencies, Configuration
+- **Effort**: Low (< 1 hour), Medium (1-4 hours), High (> 4 hours)
+- **Component**: Which microservice/module is affected
+
+### 3. For Each Finding, Provide
+- What the issue is (plain language)
+- Why it matters for the migration target
+- How to fix it (code example if possible)
+- Estimated effort
+
+### 4. Summary Format
+Always start with:
+- Total number of issues found
+- Breakdown by severity (Mandatory/Optional/Info)
+- Total estimated effort
+- Top 3 highest-priority items to address first
+
+## Migration Targets Context
+- **Containerization** (cloud-readiness): Assessing suitability for Kubernetes deployment
+- **Java upgrade**: OpenJDK 11-17 or 17-21 compatibility
+- **Spring Boot**: 2.x-3.x migration (Jakarta EE namespace changes)
+- **Dependencies**: Identifying deprecated/vulnerable libraries
+
+## Report Formats You Handle
+- HTML static reports from MTA (extracted from .tar archives)
+- YAML analysis reports from MTA API
+- CSV consolidated reports
+
+## Example Prompt Patterns
+User: "Analyze this MTA report and tell me what needs to change for containerization"
+User: "What are the top priority issues in this report?"
+User: "Generate a migration plan from this analysis"
+User: "What Spring Boot changes are required?"
+"@
+
+    $instructionsContent | Out-File $instructionsFile -Encoding UTF8
+    Write-Host "  Created $instructionsFile" -ForegroundColor Green
+}
+
+# =============================================================================
+# STEP 1: Collect Inputs & Create Apps
+# =============================================================================
+Write-Host "`n[Step 1] Collecting inputs..." -ForegroundColor Cyan
+
+# Git credentials
+$gitUsername = Read-Host "Enter Git Username"
+$gitToken = Read-Host "Enter Git Token (PAT)"
+
+# Read CSV
+if (-not (Test-Path $csvFile)) {
+    Write-Host "  Error: $csvFile not found in current directory." -ForegroundColor Red
+    exit 1
+}
+
+$apps = Import-Csv $csvFile
+Write-Host "  Loaded $($apps.Count) components from $csvFile" -ForegroundColor Green
+
+# Verify MTA connectivity
+Write-Host "`n  Verifying MTA connectivity..." -ForegroundColor White
+try {
+    $existingApps = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+        -Method GET -ContentType "application/json" -UseDefaultCredentials
+    Write-Host "  Connected. $($existingApps.Count) existing applications in MTA." -ForegroundColor Green
+} catch {
+    Write-Host "  Cannot connect to MTA: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+# Create/reuse credential
+$credName = $gitUsername
+$existingCreds = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/identities" `
+    -Method GET -ContentType "application/json" -UseDefaultCredentials
+
+$existingCred = $existingCreds | Where-Object { $_.name -eq $credName }
+
+if ($existingCred) {
+    $credId = $existingCred.id
+    Write-Host "  Credential '$credName' exists. ID: $credId" -ForegroundColor Green
+} else {
+    $credPayload = @{
+        kind = "source"; name = $credName
+        description = "Git credential for MTA pipeline"
+        user = $gitUsername; password = $gitToken
+    } | ConvertTo-Json
+
+    $credResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/identities" `
+        -Method POST -Body $credPayload -ContentType "application/json" -UseDefaultCredentials
+    $credId = $credResponse.id
+    Write-Host "  Credential '$credName' created. ID: $credId" -ForegroundColor Green
+}
+
+# Create applications
+Write-Host "`n  Creating applications..." -ForegroundColor White
+
+$results = @()
+
+foreach ($app in $apps) {
+    $gitUrl = $app.GitUrl.Trim()
+    if (-not $gitUrl.EndsWith(".git")) { $gitUrl = "$gitUrl.git" }
+
+    $componentName = ($gitUrl -split '/')[-1] -replace '\.git$', ''
+    if (-not $componentName) { $componentName = "component-$($apps.IndexOf($app))" }
+    $mtaAppName = "$($app.AppName.Trim())-$componentName"
+
+    Write-Host "    $mtaAppName" -ForegroundColor White -NoNewline
+
+    $appPayload = @{
+        name = $mtaAppName
+        description = "CSI ID: $($app.CSIID) | Component: $componentName"
+        repository = @{ kind = "git"; url = $gitUrl; branch = $app.Branch }
+        identities = @(
+            @{ id = $credId; name = $credName; role = "source" },
+            @{ id = $credId; name = $credName; role = "asset" }
+        )
+        comments = "CSI: $($app.CSIID) | Pipeline automated"
+    } | ConvertTo-Json -Depth 5
+
+    $appId = $null
+    try {
+        $appResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+            -Method POST -Body $appPayload -ContentType "application/json" -UseDefaultCredentials
+        $appId = $appResponse.id
+        Write-Host " -> Created (ID: $appId)" -ForegroundColor Green
+    } catch {
+        $allApps = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+            -Method GET -ContentType "application/json" -UseDefaultCredentials
+        $existing = $allApps | Where-Object { $_.name -eq $mtaAppName }
+        if ($existing) {
+            $appId = $existing.id
+            Write-Host " -> Exists (ID: $appId)" -ForegroundColor Yellow
+        } else {
+            Write-Host " -> FAILED" -ForegroundColor Red
+            $results += [PSCustomObject]@{
+                Component = $mtaAppName; AppID = "N/A"; TaskID = "N/A"; Status = "Create Failed"; Report = "N/A"
+            }
+            continue
+        }
+    }
+
+    # Link credentials via PUT
+    $updatePayload = @{
+        name = $mtaAppName
+        description = "CSI ID: $($app.CSIID) | Component: $componentName"
+        repository = @{ kind = "git"; url = $gitUrl; branch = $app.Branch }
+        identities = @(
+            @{ id = $credId; name = $credName; role = "source" },
+            @{ id = $credId; name = $credName; role = "asset" }
+        )
+        comments = "CSI: $($app.CSIID) | Pipeline automated"
+    } | ConvertTo-Json -Depth 5
+
+    try {
+        Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId" `
+            -Method PUT -Body $updatePayload -ContentType "application/json" -UseDefaultCredentials | Out-Null
+    } catch { }
+
+    $results += [PSCustomObject]@{
+        Component = $mtaAppName; AppID = $appId; TaskID = $null; Status = "Pending"; Report = ""
+    }
+}
+
+# =============================================================================
+# STEP 2: Trigger All Analyses
+# =============================================================================
+Write-Host "`n[Step 2] Triggering analyses..." -ForegroundColor Cyan
+
+foreach ($task in $results) {
+    if ($task.Status -eq "Create Failed") { continue }
+
+    $analysisPayload = @"
+state: Ready
+kind: analyzer
+application:
+  id: $($task.AppID)
+data:
+  mode:
+    withDeps: true
+  scope:
+    withKnownLibs: true
+  rules:
+    labels:
+      included:
+      - konveyor.io/target=cloud-readiness
+  tagger:
+    enabled: true
+"@
+
+    try {
+        $taskResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks" `
+            -Method POST -Body $analysisPayload -ContentType "application/x-yaml" -UseDefaultCredentials
+        $task.TaskID = $taskResponse.id
+        $task.Status = "Running"
+        Write-Host "  $($task.Component) -> Task ID: $($task.TaskID)" -ForegroundColor Green
+    } catch {
+        $task.Status = "Analysis Failed"
+        Write-Host "  $($task.Component) -> FAILED: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+# =============================================================================
+# STEP 3: Poll Until All Complete
+# =============================================================================
+Write-Host "`n[Step 3] Waiting for analyses to complete..." -ForegroundColor Cyan
+
+$maxWait = 900
+$elapsed = 0
+$pollInterval = 20
+$runningTasks = $results | Where-Object { $_.Status -eq "Running" }
+
+while ($elapsed -lt $maxWait -and ($runningTasks | Where-Object { $_.Status -eq "Running" }).Count -gt 0) {
+    Start-Sleep -Seconds $pollInterval
+    $elapsed += $pollInterval
+
+    foreach ($task in $runningTasks) {
+        if ($task.Status -ne "Running") { continue }
+        try {
+            $taskStatus = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks/$($task.TaskID)" `
+                -Method GET -ContentType "application/json" -UseDefaultCredentials
+            $state = $taskStatus.state
+            if ($state -eq "Succeeded" -or $state -eq "SucceededWithErrors") {
+                $task.Status = $state
+                Write-Host "  $($task.Component): $state" -ForegroundColor Green
+            } elseif ($state -eq "Failed") {
+                $task.Status = "Failed"
+                Write-Host "  $($task.Component): Failed" -ForegroundColor Red
+            }
+        } catch { }
+    }
+
+    $pending = ($runningTasks | Where-Object { $_.Status -eq "Running" }).Count
+    if ($pending -gt 0) {
+        Write-Host "  ... $pending task(s) still running (${elapsed}s)" -ForegroundColor Gray
+    }
+}
+
+if ($elapsed -ge $maxWait) {
+    Write-Host "  Timed out. Check MTA UI for remaining tasks." -ForegroundColor Yellow
+}
+
+# =============================================================================
+# STEP 4: Generate Consolidated CSV Report
+# =============================================================================
+Write-Host "`n[Step 4] Generating consolidated CSV report..." -ForegroundColor Cyan
+
+$allFindings = @()
+
+foreach ($task in $results) {
+    if ($task.Status -notlike "Succeeded*") { continue }
+
+    try {
+        $analysisResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis" `
+            -Method GET -ContentType "application/json" -UseDefaultCredentials
+
+        if ($analysisResponse.issues) {
+            foreach ($issue in $analysisResponse.issues) {
+                $allFindings += [PSCustomObject]@{
+                    Application   = $task.Component
+                    Category      = $issue.category
+                    RuleID        = $issue.rule
+                    Description   = ($issue.description -replace "`n|`r", " ").Trim()
+                    Effort        = $issue.effort
+                    FilesAffected = if ($issue.files) { $issue.files.Count } else { 0 }
+                    Labels        = ($issue.labels -join "; ")
+                }
+            }
+        }
+
+        if ($analysisResponse.rulesets) {
+            foreach ($ruleset in $analysisResponse.rulesets) {
+                if ($ruleset.violations) {
+                    foreach ($violation in $ruleset.violations.PSObject.Properties) {
+                        $v = $violation.Value
+                        $allFindings += [PSCustomObject]@{
+                            Application   = $task.Component
+                            Category      = $v.category
+                            RuleID        = $violation.Name
+                            Description   = ($v.description -replace "`n|`r", " ").Trim()
+                            Effort        = $v.effort
+                            FilesAffected = if ($v.incidents) { $v.incidents.Count } else { 0 }
+                            Labels        = if ($v.labels) { ($v.labels -join "; ") } else { "" }
+                        }
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Host "  $($task.Component): Could not fetch analysis data" -ForegroundColor Yellow
+    }
+}
+
+if ($allFindings.Count -gt 0) {
+    $allFindings | Export-Csv -Path $outputCsv -NoTypeInformation -Encoding UTF8
+    Write-Host "  Detailed report: $outputCsv ($($allFindings.Count) findings)" -ForegroundColor Green
+
+    # Summary per app
+    $appSummary = @()
+    $byApp = $allFindings | Group-Object Application
+    foreach ($group in $byApp) {
+        $totalEffort = ($group.Group | Measure-Object -Property Effort -Sum).Sum
+        $appSummary += [PSCustomObject]@{
+            Application = $group.Name
+            TotalIssues = $group.Count
+            TotalEffort = $totalEffort
+            Categories  = ($group.Group | Select-Object -ExpandProperty Category -Unique) -join "; "
+        }
+    }
+    $appSummary | Export-Csv -Path $summaryFile -NoTypeInformation -Encoding UTF8
+    Write-Host "  Summary report: $summaryFile" -ForegroundColor Green
+} else {
+    Write-Host "  No findings extracted from API. Reports will be in .tar files." -ForegroundColor Yellow
+}
+
+# =============================================================================
+# STEP 5: Download HTML Reports (.tar)
+# =============================================================================
+Write-Host "`n[Step 5] Downloading HTML reports..." -ForegroundColor Cyan
+
+foreach ($task in $results) {
+    if ($task.Status -notlike "Succeeded*") { continue }
+
+    $reportFile = "$($task.Component)-report.tar"
+    try {
+        Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis/report" `
+            -Method GET -UseDefaultCredentials -UseBasicParsing -OutFile $reportFile
+        $task.Report = $reportFile
+        Write-Host "  $($task.Component) -> $reportFile" -ForegroundColor Green
+    } catch {
+        Write-Host "  $($task.Component) -> Failed to download" -ForegroundColor Yellow
+        $task.Report = "Download failed"
+    }
+}
+
+# =============================================================================
+# FINAL SUMMARY
+# =============================================================================
+Write-Host "`n=============================================" -ForegroundColor Cyan
+Write-Host "  Pipeline Complete" -ForegroundColor Cyan
+Write-Host "=============================================" -ForegroundColor Cyan
+
+Write-Host "`n{0,-50} {1,-8} {2,-8} {3,-25}" -f "Component", "AppID", "TaskID", "Status" -ForegroundColor White
+Write-Host ("-" * 95) -ForegroundColor Gray
+
+foreach ($r in $results) {
+    $color = switch -Wildcard ($r.Status) {
+        "Succeeded*" { "Green" }
+        "Failed" { "Red" }
+        "Create Failed" { "Red" }
+        default { "Yellow" }
+    }
+    Write-Host ("{0,-50} {1,-8} {2,-8} {3,-25}" -f $r.Component, $r.AppID, $r.TaskID, $r.Status) -ForegroundColor $color
+}
+
+Write-Host "`nOutputs:" -ForegroundColor White
+Write-Host "  CSV Report:    $outputCsv" -ForegroundColor White
+Write-Host "  App Summary:   $summaryFile" -ForegroundColor White
+Write-Host "  HTML Reports:  *-report.tar" -ForegroundColor White
+Write-Host "  Copilot Setup: $instructionsFile" -ForegroundColor White
+Write-Host "`nDone!" -ForegroundColor Green
