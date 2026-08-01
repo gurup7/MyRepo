@@ -1,6 +1,6 @@
 # =============================================================================
 # MTA Automation Script - Red Hat Migration Toolkit for Applications
-# Automates: Create Application → Run Analysis → Poll → Fetch Report
+# Automates: Create Credential → Create Application → Link Credentials → Run Analysis → Fetch Report
 # Auth: Windows SSO (UseDefaultCredentials) - no token needed
 # =============================================================================
 
@@ -28,6 +28,11 @@ $csiId = Read-Host "Enter CSI ID"
 $gitUrl = Read-Host "Enter Git Repo URL (.git format)"
 $branch = Read-Host "Enter Branch (default: develop)"
 if (-not $branch) { $branch = "develop" }
+
+# --- Git Credentials ---
+Write-Host "`n--- Git Credentials ---" -ForegroundColor Yellow
+$gitUsername = Read-Host "Enter Git Username (SOEID)"
+$gitToken = Read-Host "Enter Git Token (PAT)"
 
 # --- Analysis Target Selection ---
 Write-Host "`nSelect analysis targets (comma-separated numbers):" -ForegroundColor Yellow
@@ -80,9 +85,51 @@ try {
 }
 
 # =============================================================================
-# STEP 2: Create Application
+# STEP 2: Create Git Credential
 # =============================================================================
-Write-Host "`n[Step 2] Creating application: $appName (CSI: $csiId)..." -ForegroundColor Cyan
+Write-Host "`n[Step 2] Creating git credential..." -ForegroundColor Cyan
+
+$credName = "$gitUsername-pat-$appName"
+
+# Check if credential already exists
+$existingCreds = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/identities" `
+    -Method GET `
+    -ContentType "application/json" `
+    -UseDefaultCredentials
+
+$existingCred = $existingCreds | Where-Object { $_.name -eq $credName }
+
+if ($existingCred) {
+    $credId = $existingCred.id
+    Write-Host "Credential already exists. ID: $credId" -ForegroundColor Green
+} else {
+    $credPayload = @{
+        kind        = "source"
+        name        = $credName
+        description = "Git credential for $appName"
+        user        = $gitUsername
+        password    = $gitToken
+    } | ConvertTo-Json
+
+    try {
+        $credResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/identities" `
+            -Method POST `
+            -Body $credPayload `
+            -ContentType "application/json" `
+            -UseDefaultCredentials
+
+        $credId = $credResponse.id
+        Write-Host "Credential created. ID: $credId" -ForegroundColor Green
+    } catch {
+        Write-Host "Failed to create credential: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# =============================================================================
+# STEP 3: Create Application with Credential Linked
+# =============================================================================
+Write-Host "`n[Step 3] Creating application: $appName (CSI: $csiId)..." -ForegroundColor Cyan
 
 $appPayload = @{
     name        = $appName
@@ -92,6 +139,12 @@ $appPayload = @{
         url    = $gitUrl
         branch = $branch
     }
+    identities = @(
+        @{
+            id   = $credId
+            name = $credName
+        }
+    )
     comments = "CSI: $csiId"
 } | ConvertTo-Json -Depth 5
 
@@ -103,7 +156,7 @@ try {
         -UseDefaultCredentials
 
     $appId = $appResponse.id
-    Write-Host "Application created. ID: $appId" -ForegroundColor Green
+    Write-Host "Application created with credentials linked. ID: $appId" -ForegroundColor Green
 } catch {
     Write-Host "Create failed: $($_.Exception.Message)" -ForegroundColor Yellow
 
@@ -114,6 +167,36 @@ try {
     if ($existingApp) {
         $appId = $existingApp.id
         Write-Host "Found existing application. ID: $appId" -ForegroundColor Green
+
+        # Update the existing app to link the credential
+        Write-Host "Linking credential to existing application..." -ForegroundColor Yellow
+        $updatePayload = @{
+            name        = $appName
+            description = "CSI ID: $csiId - Automated via MTA script"
+            repository  = @{
+                kind   = "git"
+                url    = $gitUrl
+                branch = $branch
+            }
+            identities = @(
+                @{
+                    id   = $credId
+                    name = $credName
+                }
+            )
+            comments = "CSI: $csiId"
+        } | ConvertTo-Json -Depth 5
+
+        try {
+            Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId" `
+                -Method PUT `
+                -Body $updatePayload `
+                -ContentType "application/json" `
+                -UseDefaultCredentials | Out-Null
+            Write-Host "Credential linked to existing application." -ForegroundColor Green
+        } catch {
+            Write-Host "Warning: Could not link credential: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
     } else {
         Write-Host "Cannot proceed without application." -ForegroundColor Red
         exit 1
@@ -121,9 +204,9 @@ try {
 }
 
 # =============================================================================
-# STEP 3: Run Analysis
+# STEP 4: Run Analysis
 # =============================================================================
-Write-Host "`n[Step 3] Triggering analysis for application ID: $appId..." -ForegroundColor Cyan
+Write-Host "`n[Step 4] Triggering analysis for application ID: $appId..." -ForegroundColor Cyan
 
 $rulesYaml = ($selectedTargets | ForEach-Object { "      - $_" }) -join "`n"
 
@@ -148,7 +231,8 @@ try {
         -Method POST `
         -Body $analysisPayload `
         -ContentType "application/x-yaml" `
-        -UseDefaultCredentials
+        -UseDefaultCredentials `
+        -UseBasicParsing
 
     $taskContent = $taskResponse.Content
     if ($taskContent -match "id:\s*(\d+)") {
@@ -162,9 +246,9 @@ try {
 }
 
 # =============================================================================
-# STEP 4: Poll for Analysis Completion
+# STEP 5: Poll for Analysis Completion
 # =============================================================================
-Write-Host "`n[Step 4] Waiting for analysis to complete..." -ForegroundColor Cyan
+Write-Host "`n[Step 5] Waiting for analysis to complete..." -ForegroundColor Cyan
 
 $maxWait = 600  # 10 minutes max
 $elapsed = 0
@@ -201,17 +285,18 @@ if ($elapsed -ge $maxWait) {
 }
 
 # =============================================================================
-# STEP 5: Fetch Reports
+# STEP 6: Fetch Reports
 # =============================================================================
-Write-Host "`n[Step 5] Fetching analysis reports..." -ForegroundColor Cyan
+Write-Host "`n[Step 6] Fetching analysis reports..." -ForegroundColor Cyan
 
-# 5a. YAML Report
+# 6a. YAML Report
 $yamlReportFile = "$appName-analysis-report.yaml"
 try {
     $yamlReport = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$appId/analysis" `
         -Method GET `
         -Headers @{ Accept = "application/x-yaml" } `
-        -UseDefaultCredentials
+        -UseDefaultCredentials `
+        -UseBasicParsing
 
     $yamlReport.Content | Out-File $yamlReportFile -Encoding UTF8
     Write-Host "YAML report saved: $yamlReportFile" -ForegroundColor Green
@@ -219,12 +304,13 @@ try {
     Write-Host "Could not fetch YAML report: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
-# 5b. Static HTML Report (ZIP)
+# 6b. Static HTML Report (ZIP)
 $zipReportFile = "$appName-analysis-report.zip"
 try {
     Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$appId/analysis/report" `
         -Method GET `
         -UseDefaultCredentials `
+        -UseBasicParsing `
         -OutFile $zipReportFile
 
     Write-Host "Static report saved: $zipReportFile" -ForegroundColor Green
@@ -238,6 +324,7 @@ try {
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 Write-Host "Application: $appName (ID: $appId)" -ForegroundColor White
 Write-Host "CSI ID: $csiId" -ForegroundColor White
+Write-Host "Credential: $credName (ID: $credId)" -ForegroundColor White
 Write-Host "Repository: $gitUrl ($branch)" -ForegroundColor White
 Write-Host "Targets: $($selectedTargets -join ', ')" -ForegroundColor White
 Write-Host "YAML Report: $yamlReportFile" -ForegroundColor White
