@@ -1,0 +1,3 @@
+AppName,CSIID,GitUrl,Branch
+Customer Hub,163477,https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.cst-d-custprofile-xd-ea-em,main
+Customer Hub,163477,https://github.com/CitiInternalLS2/163477.chub-vm-ms-eur.cst-d-component2.git,main
