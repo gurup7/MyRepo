@@ -318,6 +318,11 @@ foreach ($task in $results) {
         $analysisResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis" `
             -Method GET -ContentType "application/json" -UseDefaultCredentials
 
+        # Debug: show response structure
+        $props = $analysisResponse.PSObject.Properties.Name
+        Write-Host "  $($task.Component): Response has properties: $($props -join ', ')" -ForegroundColor Gray
+
+        # Handle different response formats
         if ($analysisResponse.issues) {
             foreach ($issue in $analysisResponse.issues) {
                 $allFindings += [PSCustomObject]@{
@@ -327,7 +332,7 @@ foreach ($task in $results) {
                     Description   = ($issue.description -replace "`n|`r", " ").Trim()
                     Effort        = $issue.effort
                     FilesAffected = if ($issue.files) { $issue.files.Count } else { 0 }
-                    Labels        = ($issue.labels -join "; ")
+                    Labels        = if ($issue.labels) { ($issue.labels -join "; ") } else { "" }
                 }
             }
         }
@@ -350,10 +355,28 @@ foreach ($task in $results) {
                 }
             }
         }
+
+        # If response is an array of issues directly
+        if ($analysisResponse -is [System.Array]) {
+            foreach ($item in $analysisResponse) {
+                $allFindings += [PSCustomObject]@{
+                    Application   = $task.Component
+                    Category      = $item.category
+                    RuleID        = $item.rule
+                    Description   = if ($item.description) { ($item.description -replace "`n|`r", " ").Trim() } else { $item.name }
+                    Effort        = $item.effort
+                    FilesAffected = if ($item.incidents) { $item.incidents.Count } else { 0 }
+                    Labels        = if ($item.labels) { ($item.labels -join "; ") } else { "" }
+                }
+            }
+        }
+
     } catch {
-        Write-Host "  $($task.Component): Could not fetch analysis data" -ForegroundColor Yellow
+        Write-Host "  $($task.Component): Could not fetch analysis data: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
+
+Write-Host "  Total findings extracted: $($allFindings.Count)" -ForegroundColor White
 
 if ($allFindings.Count -gt 0) {
     $allFindings | Export-Csv -Path $outputCsv -NoTypeInformation -Encoding UTF8
@@ -404,7 +427,7 @@ Write-Host "`n=============================================" -ForegroundColor Cy
 Write-Host "  Pipeline Complete" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 
-Write-Host "`n{0,-50} {1,-8} {2,-8} {3,-25}" -f "Component", "AppID", "TaskID", "Status" -ForegroundColor White
+Write-Host "`n$("{0,-50} {1,-8} {2,-8} {3,-25}" -f "Component", "AppID", "TaskID", "Status")" -ForegroundColor White
 Write-Host ("-" * 95) -ForegroundColor Gray
 
 foreach ($r in $results) {
@@ -414,7 +437,8 @@ foreach ($r in $results) {
         "Create Failed" { "Red" }
         default { "Yellow" }
     }
-    Write-Host ("{0,-50} {1,-8} {2,-8} {3,-25}" -f $r.Component, $r.AppID, $r.TaskID, $r.Status) -ForegroundColor $color
+    $line = "{0,-50} {1,-8} {2,-8} {3,-25}" -f $r.Component, $r.AppID, $r.TaskID, $r.Status
+    Write-Host $line -ForegroundColor $color
 }
 
 Write-Host "`nOutputs:" -ForegroundColor White
