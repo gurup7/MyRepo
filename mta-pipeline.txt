@@ -271,36 +271,43 @@ Write-Host "`n[Step 3] Waiting for analyses to complete..." -ForegroundColor Cya
 $maxWait = 900
 $elapsed = 0
 $pollInterval = 20
-$runningTasks = $results | Where-Object { $_.Status -eq "Running" }
 
-while ($elapsed -lt $maxWait -and ($runningTasks | Where-Object { $_.Status -eq "Running" }).Count -gt 0) {
+while ($elapsed -lt $maxWait) {
     Start-Sleep -Seconds $pollInterval
     $elapsed += $pollInterval
 
-    foreach ($task in $runningTasks) {
+    $stillRunning = 0
+    foreach ($task in $results) {
         if ($task.Status -ne "Running") { continue }
+        $stillRunning++
+
         try {
             $taskStatus = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks/$($task.TaskID)" `
                 -Method GET -ContentType "application/json" -UseDefaultCredentials
             $state = $taskStatus.state
             if ($state -eq "Succeeded" -or $state -eq "SucceededWithErrors") {
                 $task.Status = $state
+                $stillRunning--
                 Write-Host "  $($task.Component): $state" -ForegroundColor Green
             } elseif ($state -eq "Failed") {
                 $task.Status = "Failed"
+                $stillRunning--
                 Write-Host "  $($task.Component): Failed" -ForegroundColor Red
             }
         } catch { }
     }
 
-    $pending = ($runningTasks | Where-Object { $_.Status -eq "Running" }).Count
-    if ($pending -gt 0) {
-        Write-Host "  ... $pending task(s) still running (${elapsed}s)" -ForegroundColor Gray
+    if ($stillRunning -eq 0) {
+        Write-Host "  All analyses complete." -ForegroundColor Green
+        break
     }
+
+    Write-Host "  ... $stillRunning task(s) still running (${elapsed}s)" -ForegroundColor Gray
 }
 
 if ($elapsed -ge $maxWait) {
-    Write-Host "  Timed out. Check MTA UI for remaining tasks." -ForegroundColor Yellow
+    Write-Host "  Timed out. Some tasks may still be running." -ForegroundColor Yellow
+    Write-Host "  Re-run the pipeline later to pick up remaining results." -ForegroundColor Yellow
 }
 
 # =============================================================================
