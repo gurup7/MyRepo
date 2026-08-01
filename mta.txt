@@ -1,0 +1,290 @@
+# =============================================================================
+# MTA Automation Script - Red Hat Migration Toolkit for Applications
+# Automates: Login → Create Application → Run Analysis → Fetch Report
+# =============================================================================
+
+# --- Configuration ---
+$mtaBaseUrl = "https://mta-openshift-mta.apps.ilab-ctigtdc12d.ecs.dyn.nsroot.net"
+
+# --- Collect Inputs ---
+Write-Host "=== MTA Automation ===" -ForegroundColor Cyan
+
+$username = Read-Host "Enter MTA Username"
+$password = Read-Host "Enter MTA Password"
+$appName = Read-Host "Enter Application Name (e.g., my-service)"
+$csiId = Read-Host "Enter CSI ID"
+$gitUrl = Read-Host "Enter Git Repo URL (.git format)"
+$branch = Read-Host "Enter Branch (default: develop)"
+if (-not $branch) { $branch = "develop" }
+
+# --- Analysis Target Selection ---
+Write-Host "`nSelect analysis targets (comma-separated numbers):" -ForegroundColor Yellow
+Write-Host "  1. Java 11 to 17 (openjdk17)"
+Write-Host "  2. Java 17 to 21 (openjdk21)"
+Write-Host "  3. Spring Boot (spring-boot)"
+Write-Host "  4. Cloud Readiness (cloud-readiness)"
+Write-Host "  5. Jakarta EE (jakarta-ee)"
+Write-Host "  6. Quarkus (quarkus)"
+$targetChoice = Read-Host "Enter choices (e.g., 1,3)"
+
+$targetMap = @{
+    "1" = "konveyor.io/target=openjdk17"
+    "2" = "konveyor.io/target=openjdk21"
+    "3" = "konveyor.io/target=spring-boot"
+    "4" = "konveyor.io/target=cloud-readiness"
+    "5" = "konveyor.io/target=jakarta-ee"
+    "6" = "konveyor.io/target=quarkus"
+}
+
+$selectedTargets = @()
+foreach ($choice in ($targetChoice -split ',')) {
+    $key = $choice.Trim()
+    if ($targetMap.ContainsKey($key)) {
+        $selectedTargets += $targetMap[$key]
+    }
+}
+
+if ($selectedTargets.Count -eq 0) {
+    Write-Host "No valid targets selected. Defaulting to cloud-readiness." -ForegroundColor Yellow
+    $selectedTargets = @("konveyor.io/target=cloud-readiness")
+}
+
+Write-Host "`nTargets: $($selectedTargets -join ', ')" -ForegroundColor Green
+
+# =============================================================================
+# STEP 1: Login and Get Token
+# =============================================================================
+Write-Host "`n[Step 1] Authenticating..." -ForegroundColor Cyan
+
+$loginBody = @{
+    user     = $username
+    password = $password
+} | ConvertTo-Json
+
+try {
+    $loginResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/auth/login" `
+        -Method POST `
+        -Body $loginBody `
+        -ContentType "application/json" `
+        -SkipCertificateCheck:$false
+    
+    # Handle self-signed cert if needed
+} catch {
+    # Retry with certificate bypass for self-signed certs
+    try {
+        # PowerShell 5.x workaround for self-signed certs
+        if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
+            Add-Type @"
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+public class TrustAllCertsPolicy : ICertificatePolicy {
+    public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) { return true; }
+}
+"@
+        }
+        [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+        $loginResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/auth/login" `
+            -Method POST `
+            -Body $loginBody `
+            -ContentType "application/json"
+    } catch {
+        Write-Host "Login failed: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+$token = $loginResponse.token
+if (-not $token) {
+    Write-Host "Login failed. No token received." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Authenticated successfully." -ForegroundColor Green
+$authHeaders = @{
+    Authorization  = "Bearer $token"
+    "Content-Type" = "application/json"
+    Accept         = "application/json"
+}
+
+# =============================================================================
+# STEP 2: Create Application
+# =============================================================================
+Write-Host "`n[Step 2] Creating application: $appName (CSI: $csiId)..." -ForegroundColor Cyan
+
+$appPayload = @{
+    name        = $appName
+    description = "CSI ID: $csiId - Automated via MTA script"
+    repository  = @{
+        kind   = "git"
+        url    = $gitUrl
+        branch = $branch
+    }
+    comments = "CSI: $csiId"
+} | ConvertTo-Json -Depth 5
+
+try {
+    $appResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+        -Method POST `
+        -Body $appPayload `
+        -Headers $authHeaders
+    
+    $appId = $appResponse.id
+    Write-Host "Application created. ID: $appId" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to create application: $($_.Exception.Message)" -ForegroundColor Red
+    
+    # Check if app already exists
+    Write-Host "Checking if application already exists..." -ForegroundColor Yellow
+    $existingApps = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" -Method GET -Headers $authHeaders
+    $existingApp = $existingApps | Where-Object { $_.name -eq $appName }
+    
+    if ($existingApp) {
+        $appId = $existingApp.id
+        Write-Host "Found existing application. ID: $appId" -ForegroundColor Green
+    } else {
+        Write-Host "Cannot proceed without application." -ForegroundColor Red
+        exit 1
+    }
+}
+
+# =============================================================================
+# STEP 3: Run Analysis
+# =============================================================================
+Write-Host "`n[Step 3] Triggering analysis for application ID: $appId..." -ForegroundColor Cyan
+
+# Build YAML payload for analysis task
+$rulesYaml = ($selectedTargets | ForEach-Object { "      - $_" }) -join "`n"
+
+$analysisPayload = @"
+state: Ready
+kind: analyzer
+application:
+  id: $appId
+data:
+  mode:
+    withDeps: true
+  rules:
+    labels:
+      included:
+$rulesYaml
+  tagger:
+    enabled: true
+"@
+
+$analysisHeaders = @{
+    Authorization  = "Bearer $token"
+    "Content-Type" = "application/x-yaml"
+    Accept         = "application/x-yaml"
+}
+
+try {
+    $taskResponse = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/tasks" `
+        -Method POST `
+        -Body $analysisPayload `
+        -Headers $analysisHeaders
+    
+    # Extract task ID from response
+    $taskContent = $taskResponse.Content
+    if ($taskContent -match "id:\s*(\d+)") {
+        $taskId = $matches[1]
+    }
+    
+    Write-Host "Analysis task created. Task ID: $taskId" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to trigger analysis: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+# =============================================================================
+# STEP 4: Poll for Analysis Completion
+# =============================================================================
+Write-Host "`n[Step 4] Waiting for analysis to complete..." -ForegroundColor Cyan
+
+$maxWait = 600  # 10 minutes max
+$elapsed = 0
+$pollInterval = 15
+
+while ($elapsed -lt $maxWait) {
+    Start-Sleep -Seconds $pollInterval
+    $elapsed += $pollInterval
+    
+    try {
+        $taskStatus = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks/$taskId" `
+            -Method GET `
+            -Headers $authHeaders
+        
+        $state = $taskStatus.state
+        Write-Host "  Status: $state (${elapsed}s elapsed)" -ForegroundColor White
+        
+        if ($state -eq "Succeeded") {
+            Write-Host "Analysis completed successfully!" -ForegroundColor Green
+            break
+        } elseif ($state -eq "Failed") {
+            Write-Host "Analysis failed." -ForegroundColor Red
+            Write-Host "Details: $($taskStatus | ConvertTo-Json -Depth 3)" -ForegroundColor Red
+            exit 1
+        }
+    } catch {
+        Write-Host "  Error polling status: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
+if ($elapsed -ge $maxWait) {
+    Write-Host "Analysis timed out after ${maxWait}s. Check MTA UI for status." -ForegroundColor Yellow
+}
+
+# =============================================================================
+# STEP 5: Fetch Reports
+# =============================================================================
+Write-Host "`n[Step 5] Fetching analysis reports..." -ForegroundColor Cyan
+
+# 5a. YAML Report
+$yamlReportFile = "$appName-analysis-report.yaml"
+try {
+    $yamlHeaders = @{
+        Authorization   = "Bearer $token"
+        Accept          = "application/x-yaml"
+        "Accept-Encoding" = "gzip, deflate, br"
+    }
+    $yamlReport = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId/analysis" `
+        -Method GET `
+        -Headers $yamlHeaders
+    
+    $yamlReport | Out-File $yamlReportFile -Encoding UTF8
+    Write-Host "YAML report saved: $yamlReportFile" -ForegroundColor Green
+} catch {
+    Write-Host "Could not fetch YAML report: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# 5b. Static HTML Report (ZIP)
+$zipReportFile = "$appName-analysis-report.zip"
+try {
+    $reportHeaders = @{
+        Authorization   = "Bearer $token"
+        Accept          = "application/octet-stream"
+        "Accept-Encoding" = "gzip, deflate, br"
+    }
+    Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$appId/analysis/report" `
+        -Method GET `
+        -Headers $reportHeaders `
+        -OutFile $zipReportFile
+    
+    Write-Host "Static report saved: $zipReportFile" -ForegroundColor Green
+} catch {
+    Write-Host "Could not fetch static report: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# =============================================================================
+# Summary
+# =============================================================================
+Write-Host "`n=== Summary ===" -ForegroundColor Cyan
+Write-Host "Application: $appName (ID: $appId)" -ForegroundColor White
+Write-Host "CSI ID: $csiId" -ForegroundColor White
+Write-Host "Repository: $gitUrl ($branch)" -ForegroundColor White
+Write-Host "Targets: $($selectedTargets -join ', ')" -ForegroundColor White
+Write-Host "YAML Report: $yamlReportFile" -ForegroundColor White
+Write-Host "HTML Report: $zipReportFile" -ForegroundColor White
+Write-Host "MTA UI: $mtaBaseUrl/applications" -ForegroundColor White
+Write-Host "`nDone!" -ForegroundColor Green
