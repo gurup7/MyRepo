@@ -89,7 +89,7 @@ try {
 # =============================================================================
 Write-Host "`n[Step 2] Creating git credential..." -ForegroundColor Cyan
 
-$credName = "$gitUsername-pat-$appName"
+$credName = $gitUsername
 
 # Check if credential already exists
 $existingCreds = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/identities" `
@@ -145,6 +145,11 @@ $appPayload = @{
             id   = $credId
             name = $credName
             role = "source"
+        },
+        @{
+            id   = $credId
+            name = $credName
+            role = "asset"
         }
     )
     comments = "CSI: $csiId"
@@ -194,6 +199,11 @@ $updatePayload = @{
             id   = $credId
             name = $credName
             role = "source"
+        },
+        @{
+            id   = $credId
+            name = $credName
+            role = "asset"
         }
     )
     comments = "CSI: $csiId"
@@ -254,40 +264,15 @@ Write-Host "Payload:" -ForegroundColor Gray
 Write-Host $analysisPayload -ForegroundColor Gray
 
 try {
-    $taskResponse = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/tasks" `
+    # Submit as YAML but accept JSON response for easier parsing
+    $taskResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks" `
         -Method POST `
         -Body $analysisPayload `
         -ContentType "application/x-yaml" `
-        -UseDefaultCredentials `
-        -UseBasicParsing
+        -UseDefaultCredentials
 
-    $taskContent = $taskResponse.Content
-    Write-Host "Task response:" -ForegroundColor Gray
-    Write-Host $taskContent -ForegroundColor Gray
-
-    # Try to extract task ID from YAML response
-    if ($taskContent -match "id:\s*(\d+)") {
-        $taskId = $matches[1]
-    }
-
-    if (-not $taskId) {
-        Write-Host "Warning: Could not extract Task ID from response." -ForegroundColor Yellow
-        Write-Host "Response: $taskContent" -ForegroundColor Yellow
-        
-        # Fallback: get the latest task for this application
-        $allTasks = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks" `
-            -Method GET `
-            -ContentType "application/json" `
-            -UseDefaultCredentials
-        
-        $appTask = $allTasks | Where-Object { $_.application.id -eq $appId } | Sort-Object -Property id -Descending | Select-Object -First 1
-        if ($appTask) {
-            $taskId = $appTask.id
-            Write-Host "Found task via fallback. Task ID: $taskId" -ForegroundColor Green
-        }
-    } else {
-        Write-Host "Analysis task created. Task ID: $taskId" -ForegroundColor Green
-    }
+    $taskId = $taskResponse.id
+    Write-Host "Analysis task created. Task ID: $taskId" -ForegroundColor Green
 } catch {
     Write-Host "Failed to trigger analysis: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
@@ -297,7 +282,6 @@ if (-not $taskId) {
     Write-Host "Cannot determine Task ID. Check MTA UI for analysis status." -ForegroundColor Red
     exit 1
 }
-
 # =============================================================================
 # STEP 5: Poll for Analysis Completion
 # =============================================================================
