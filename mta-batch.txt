@@ -1,0 +1,293 @@
+# =============================================================================
+# MTA Batch Automation Script
+# Reads apps.csv → Creates Apps → Links Credentials → Runs Analysis → Fetches Reports
+# Analysis Mode: Source code + Dependencies
+# Target: Containerization (cloud-readiness)
+# Scope: Application and all dependencies including known Open Source libraries
+# Auth: Windows SSO (UseDefaultCredentials)
+# =============================================================================
+
+# --- Configuration ---
+$mtaBaseUrl = "https://mta-openshift-mta.apps.ilab-ctigtdc12d.ecs.dyn.nsroot.net"
+$csvFile = "apps.csv"
+
+# --- SSL Certificate Bypass ---
+if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
+    Add-Type @"
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+public class TrustAllCertsPolicy : ICertificatePolicy {
+    public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) { return true; }
+}
+"@
+}
+[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+# --- Collect Git Credentials (once for all) ---
+Write-Host "=== MTA Batch Automation ===" -ForegroundColor Cyan
+Write-Host "CSV File: $csvFile`n" -ForegroundColor White
+
+$gitUsername = Read-Host "Enter Git Username (SOEID)"
+$gitToken = Read-Host "Enter Git Token (PAT)"
+
+# --- Read CSV ---
+if (-not (Test-Path $csvFile)) {
+    Write-Host "Error: $csvFile not found in current directory." -ForegroundColor Red
+    exit 1
+}
+
+$apps = Import-Csv $csvFile
+Write-Host "Loaded $($apps.Count) components from CSV.`n" -ForegroundColor Green
+
+# =============================================================================
+# STEP 1: Verify Connectivity
+# =============================================================================
+Write-Host "[Step 1] Verifying MTA connectivity..." -ForegroundColor Cyan
+
+try {
+    $existingApps = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+        -Method GET -ContentType "application/json" -UseDefaultCredentials
+    Write-Host "Connected. Found $($existingApps.Count) existing applications.`n" -ForegroundColor Green
+} catch {
+    Write-Host "Cannot connect to MTA: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+# =============================================================================
+# STEP 2: Create/Reuse Git Credential
+# =============================================================================
+Write-Host "[Step 2] Setting up git credential..." -ForegroundColor Cyan
+
+$credName = $gitUsername
+
+$existingCreds = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/identities" `
+    -Method GET -ContentType "application/json" -UseDefaultCredentials
+
+$existingCred = $existingCreds | Where-Object { $_.name -eq $credName }
+
+if ($existingCred) {
+    $credId = $existingCred.id
+    Write-Host "Credential '$credName' already exists. ID: $credId`n" -ForegroundColor Green
+} else {
+    $credPayload = @{
+        kind        = "source"
+        name        = $credName
+        description = "Git credential for batch MTA analysis"
+        user        = $gitUsername
+        password    = $gitToken
+    } | ConvertTo-Json
+
+    try {
+        $credResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/identities" `
+            -Method POST -Body $credPayload -ContentType "application/json" -UseDefaultCredentials
+        $credId = $credResponse.id
+        Write-Host "Credential '$credName' created. ID: $credId`n" -ForegroundColor Green
+    } catch {
+        Write-Host "Failed to create credential: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# =============================================================================
+# STEP 3: Process Each Component
+# =============================================================================
+Write-Host "[Step 3] Creating applications and triggering analysis...`n" -ForegroundColor Cyan
+
+$results = @()
+
+foreach ($app in $apps) {
+    # Derive component name from git URL (last part before .git)
+    $componentName = ($app.GitUrl -split '/')[-1] -replace '\.git$', ''
+    $mtaAppName = "$($app.AppName)-$componentName"
+
+    Write-Host "--- Processing: $mtaAppName ---" -ForegroundColor Yellow
+
+    # 3a. Create Application
+    $appPayload = @{
+        name        = $mtaAppName
+        description = "CSI ID: $($app.CSIID) | Component: $componentName"
+        repository  = @{
+            kind   = "git"
+            url    = $app.GitUrl
+            branch = $app.Branch
+        }
+        identities = @(
+            @{ id = $credId; name = $credName; role = "source" },
+            @{ id = $credId; name = $credName; role = "asset" }
+        )
+        comments = "CSI: $($app.CSIID) | Batch automated"
+    } | ConvertTo-Json -Depth 5
+
+    $appId = $null
+    try {
+        $appResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+            -Method POST -Body $appPayload -ContentType "application/json" -UseDefaultCredentials
+        $appId = $appResponse.id
+        Write-Host "  Application created. ID: $appId" -ForegroundColor Green
+    } catch {
+        # Check if already exists
+        $existing = $existingApps | Where-Object { $_.name -eq $mtaAppName }
+        if ($existing) {
+            $appId = $existing.id
+            Write-Host "  Application already exists. ID: $appId" -ForegroundColor Green
+        } else {
+            Write-Host "  Failed to create: $($_.Exception.Message)" -ForegroundColor Red
+            $results += [PSCustomObject]@{
+                Component = $mtaAppName; AppID = "N/A"; TaskID = "N/A"; Status = "Create Failed"; Report = "N/A"
+            }
+            continue
+        }
+    }
+
+    # 3b. Link credentials (PUT to ensure they're mapped)
+    $updatePayload = @{
+        name        = $mtaAppName
+        description = "CSI ID: $($app.CSIID) | Component: $componentName"
+        repository  = @{
+            kind   = "git"
+            url    = $app.GitUrl
+            branch = $app.Branch
+        }
+        identities = @(
+            @{ id = $credId; name = $credName; role = "source" },
+            @{ id = $credId; name = $credName; role = "asset" }
+        )
+        comments = "CSI: $($app.CSIID) | Batch automated"
+    } | ConvertTo-Json -Depth 5
+
+    try {
+        Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId" `
+            -Method PUT -Body $updatePayload -ContentType "application/json" -UseDefaultCredentials | Out-Null
+        Write-Host "  Credentials linked." -ForegroundColor Green
+    } catch {
+        Write-Host "  Warning: Could not link credentials: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+
+    # 3c. Trigger Analysis
+    # Mode: source + deps (withDeps: true)
+    # Target: containerization (cloud-readiness)
+    # Scope: all deps including OSS (depsScope: "")
+    $analysisPayload = @"
+state: Ready
+kind: analyzer
+application:
+  id: $appId
+data:
+  mode:
+    withDeps: true
+  scope:
+    withKnownLibs: true
+  rules:
+    labels:
+      included:
+      - konveyor.io/target=cloud-readiness
+  tagger:
+    enabled: true
+"@
+
+    $taskId = $null
+    try {
+        $taskResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks" `
+            -Method POST -Body $analysisPayload -ContentType "application/x-yaml" -UseDefaultCredentials
+        $taskId = $taskResponse.id
+        Write-Host "  Analysis triggered. Task ID: $taskId" -ForegroundColor Green
+    } catch {
+        Write-Host "  Failed to trigger analysis: $($_.Exception.Message)" -ForegroundColor Red
+        $results += [PSCustomObject]@{
+            Component = $mtaAppName; AppID = $appId; TaskID = "N/A"; Status = "Analysis Failed"; Report = "N/A"
+        }
+        continue
+    }
+
+    $results += [PSCustomObject]@{
+        Component = $mtaAppName; AppID = $appId; TaskID = $taskId; Status = "Running"; Report = ""
+    }
+
+    Write-Host ""
+}
+
+# =============================================================================
+# STEP 4: Poll All Tasks Until Complete
+# =============================================================================
+Write-Host "[Step 4] Waiting for all analyses to complete..." -ForegroundColor Cyan
+
+$maxWait = 900  # 15 minutes max
+$elapsed = 0
+$pollInterval = 20
+
+$runningTasks = $results | Where-Object { $_.Status -eq "Running" }
+
+while ($elapsed -lt $maxWait -and ($runningTasks | Where-Object { $_.Status -eq "Running" }).Count -gt 0) {
+    Start-Sleep -Seconds $pollInterval
+    $elapsed += $pollInterval
+
+    foreach ($task in $runningTasks) {
+        if ($task.Status -ne "Running") { continue }
+
+        try {
+            $taskStatus = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks/$($task.TaskID)" `
+                -Method GET -ContentType "application/json" -UseDefaultCredentials
+
+            $state = $taskStatus.state
+
+            if ($state -eq "Succeeded" -or $state -eq "SucceededWithErrors") {
+                $task.Status = $state
+                Write-Host "  $($task.Component): $state" -ForegroundColor Green
+            } elseif ($state -eq "Failed") {
+                $task.Status = "Failed"
+                Write-Host "  $($task.Component): Failed" -ForegroundColor Red
+            }
+        } catch {
+            # Ignore polling errors, will retry
+        }
+    }
+
+    $pending = ($runningTasks | Where-Object { $_.Status -eq "Running" }).Count
+    if ($pending -gt 0) {
+        Write-Host "  Waiting... $pending task(s) still running (${elapsed}s elapsed)" -ForegroundColor White
+    }
+}
+
+# =============================================================================
+# STEP 5: Fetch Reports for Completed Analyses
+# =============================================================================
+Write-Host "`n[Step 5] Fetching reports..." -ForegroundColor Cyan
+
+foreach ($task in $results) {
+    if ($task.Status -like "Succeeded*") {
+        $reportFile = "$($task.Component)-report.yaml"
+        try {
+            $report = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis" `
+                -Method GET -Headers @{ Accept = "application/x-yaml" } `
+                -UseDefaultCredentials -UseBasicParsing
+            $report.Content | Out-File $reportFile -Encoding UTF8
+            $task.Report = $reportFile
+            Write-Host "  $($task.Component): Report saved -> $reportFile" -ForegroundColor Green
+        } catch {
+            Write-Host "  $($task.Component): Could not fetch report: $($_.Exception.Message)" -ForegroundColor Yellow
+            $task.Report = "Fetch failed"
+        }
+    }
+}
+
+# =============================================================================
+# Summary
+# =============================================================================
+Write-Host "`n=== Batch Analysis Summary ===" -ForegroundColor Cyan
+Write-Host ("-" * 100) -ForegroundColor White
+Write-Host ("{0,-45} {1,-8} {2,-8} {3,-25} {4}" -f "Component", "AppID", "TaskID", "Status", "Report") -ForegroundColor White
+Write-Host ("-" * 100) -ForegroundColor White
+
+foreach ($r in $results) {
+    $color = switch ($r.Status) {
+        "Succeeded" { "Green" }
+        "SucceededWithErrors" { "Yellow" }
+        "Failed" { "Red" }
+        default { "White" }
+    }
+    Write-Host ("{0,-45} {1,-8} {2,-8} {3,-25} {4}" -f $r.Component, $r.AppID, $r.TaskID, $r.Status, $r.Report) -ForegroundColor $color
+}
+
+Write-Host ("-" * 100) -ForegroundColor White
+Write-Host "`nDone! $($results.Count) components processed." -ForegroundColor Green
