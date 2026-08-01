@@ -127,10 +127,11 @@ if ($existingCred) {
 }
 
 # =============================================================================
-# STEP 3: Create Application with Credential Linked
+# STEP 3: Create Application
 # =============================================================================
 Write-Host "`n[Step 3] Creating application: $appName (CSI: $csiId)..." -ForegroundColor Cyan
 
+# Note: identities need "role" field - "source" for source repo, "asset" for asset repo
 $appPayload = @{
     name        = $appName
     description = "CSI ID: $csiId - Automated via MTA script"
@@ -143,6 +144,7 @@ $appPayload = @{
         @{
             id   = $credId
             name = $credName
+            role = "source"
         }
     )
     comments = "CSI: $csiId"
@@ -156,7 +158,7 @@ try {
         -UseDefaultCredentials
 
     $appId = $appResponse.id
-    Write-Host "Application created with credentials linked. ID: $appId" -ForegroundColor Green
+    Write-Host "Application created. ID: $appId" -ForegroundColor Green
 } catch {
     Write-Host "Create failed: $($_.Exception.Message)" -ForegroundColor Yellow
 
@@ -167,40 +169,62 @@ try {
     if ($existingApp) {
         $appId = $existingApp.id
         Write-Host "Found existing application. ID: $appId" -ForegroundColor Green
-
-        # Update the existing app to link the credential
-        Write-Host "Linking credential to existing application..." -ForegroundColor Yellow
-        $updatePayload = @{
-            name        = $appName
-            description = "CSI ID: $csiId - Automated via MTA script"
-            repository  = @{
-                kind   = "git"
-                url    = $gitUrl
-                branch = $branch
-            }
-            identities = @(
-                @{
-                    id   = $credId
-                    name = $credName
-                }
-            )
-            comments = "CSI: $csiId"
-        } | ConvertTo-Json -Depth 5
-
-        try {
-            Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId" `
-                -Method PUT `
-                -Body $updatePayload `
-                -ContentType "application/json" `
-                -UseDefaultCredentials | Out-Null
-            Write-Host "Credential linked to existing application." -ForegroundColor Green
-        } catch {
-            Write-Host "Warning: Could not link credential: $($_.Exception.Message)" -ForegroundColor Yellow
-        }
     } else {
         Write-Host "Cannot proceed without application." -ForegroundColor Red
         exit 1
     }
+}
+
+# =============================================================================
+# STEP 3b: Link Credentials to Application (via dedicated endpoint)
+# =============================================================================
+Write-Host "Linking credentials to application..." -ForegroundColor Cyan
+
+# Update application with credentials using PUT
+$updatePayload = @{
+    name        = $appName
+    description = "CSI ID: $csiId - Automated via MTA script"
+    repository  = @{
+        kind   = "git"
+        url    = $gitUrl
+        branch = $branch
+    }
+    identities = @(
+        @{
+            id   = $credId
+            name = $credName
+            role = "source"
+        }
+    )
+    comments = "CSI: $csiId"
+} | ConvertTo-Json -Depth 5
+
+try {
+    Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId" `
+        -Method PUT `
+        -Body $updatePayload `
+        -ContentType "application/json" `
+        -UseDefaultCredentials | Out-Null
+    Write-Host "Credentials linked (source repo)." -ForegroundColor Green
+} catch {
+    Write-Host "Warning: Could not link credential via PUT: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# Verify credentials are linked
+try {
+    $verifyApp = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId" `
+        -Method GET `
+        -ContentType "application/json" `
+        -UseDefaultCredentials
+    
+    $linkedIds = $verifyApp.identities
+    if ($linkedIds -and $linkedIds.Count -gt 0) {
+        Write-Host "Verified: $($linkedIds.Count) credential(s) linked." -ForegroundColor Green
+    } else {
+        Write-Host "Warning: No credentials found on application after linking." -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "Could not verify: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 # =============================================================================
@@ -226,6 +250,9 @@ $rulesYaml
     enabled: true
 "@
 
+Write-Host "Payload:" -ForegroundColor Gray
+Write-Host $analysisPayload -ForegroundColor Gray
+
 try {
     $taskResponse = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/tasks" `
         -Method POST `
@@ -235,13 +262,39 @@ try {
         -UseBasicParsing
 
     $taskContent = $taskResponse.Content
+    Write-Host "Task response:" -ForegroundColor Gray
+    Write-Host $taskContent -ForegroundColor Gray
+
+    # Try to extract task ID from YAML response
     if ($taskContent -match "id:\s*(\d+)") {
         $taskId = $matches[1]
     }
 
-    Write-Host "Analysis task created. Task ID: $taskId" -ForegroundColor Green
+    if (-not $taskId) {
+        Write-Host "Warning: Could not extract Task ID from response." -ForegroundColor Yellow
+        Write-Host "Response: $taskContent" -ForegroundColor Yellow
+        
+        # Fallback: get the latest task for this application
+        $allTasks = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks" `
+            -Method GET `
+            -ContentType "application/json" `
+            -UseDefaultCredentials
+        
+        $appTask = $allTasks | Where-Object { $_.application.id -eq $appId } | Sort-Object -Property id -Descending | Select-Object -First 1
+        if ($appTask) {
+            $taskId = $appTask.id
+            Write-Host "Found task via fallback. Task ID: $taskId" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "Analysis task created. Task ID: $taskId" -ForegroundColor Green
+    }
 } catch {
     Write-Host "Failed to trigger analysis: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+if (-not $taskId) {
+    Write-Host "Cannot determine Task ID. Check MTA UI for analysis status." -ForegroundColor Red
     exit 1
 }
 
@@ -327,6 +380,7 @@ Write-Host "CSI ID: $csiId" -ForegroundColor White
 Write-Host "Credential: $credName (ID: $credId)" -ForegroundColor White
 Write-Host "Repository: $gitUrl ($branch)" -ForegroundColor White
 Write-Host "Targets: $($selectedTargets -join ', ')" -ForegroundColor White
+Write-Host "Task ID: $taskId" -ForegroundColor White
 Write-Host "YAML Report: $yamlReportFile" -ForegroundColor White
 Write-Host "HTML Report: $zipReportFile" -ForegroundColor White
 Write-Host "MTA UI: $mtaBaseUrl/applications" -ForegroundColor White
