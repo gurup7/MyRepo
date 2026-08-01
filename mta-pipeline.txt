@@ -11,8 +11,6 @@
 # --- Configuration ---
 $mtaBaseUrl = "https://mta-openshift-mta.apps.ilab-ctigtdc12d.ecs.dyn.nsroot.net"
 $csvFile = "apps.csv"
-$outputCsv = "mta-consolidated-report.csv"
-$summaryFile = "mta-app-summary.csv"
 
 # --- SSL Certificate Bypass ---
 if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
@@ -111,7 +109,8 @@ Write-Host "`n[Step 1] Collecting inputs..." -ForegroundColor Cyan
 
 # Git credentials
 $gitUsername = Read-Host "Enter Git Username"
-$gitToken = Read-Host "Enter Git Token (PAT)"
+$gitToken = Read-Host "Enter Git Token (PAT)" -AsSecureString
+$gitToken = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($gitToken))
 
 # Read CSV
 if (-not (Test-Path $csvFile)) {
@@ -349,23 +348,18 @@ foreach ($task in $results) {
 Write-Host "  Total findings extracted: $($allFindings.Count)" -ForegroundColor White
 
 if ($allFindings.Count -gt 0) {
-    $allFindings | Export-Csv -Path $outputCsv -NoTypeInformation -Encoding UTF8
-    Write-Host "  Detailed report: $outputCsv ($($allFindings.Count) findings)" -ForegroundColor Green
-
-    # Summary per app
-    $appSummary = @()
-    $byApp = $allFindings | Group-Object Application
-    foreach ($group in $byApp) {
-        $totalEffort = ($group.Group | Measure-Object -Property Effort -Sum).Sum
-        $appSummary += [PSCustomObject]@{
-            Application = $group.Name
-            TotalIssues = $group.Count
-            TotalEffort = $totalEffort
-            Categories  = ($group.Group | Select-Object -ExpandProperty Category -Unique) -join "; "
-        }
+    # CSV 1: Issues only (mandatory + optional - actionable items)
+    $issuesOnly = $allFindings | Where-Object { $_.Category -eq "mandatory" -or $_.Category -eq "optional" }
+    if ($issuesOnly.Count -gt 0) {
+        $issuesOnly | Export-Csv -Path "mta-issues-only.csv" -NoTypeInformation -Encoding UTF8
+        Write-Host "  Issues report: mta-issues-only.csv ($($issuesOnly.Count) actionable findings)" -ForegroundColor Green
+    } else {
+        Write-Host "  No actionable issues found (all discovery/informational)." -ForegroundColor Yellow
     }
-    $appSummary | Export-Csv -Path $summaryFile -NoTypeInformation -Encoding UTF8
-    Write-Host "  Summary report: $summaryFile" -ForegroundColor Green
+
+    # CSV 2: Full report (everything including discovery)
+    $allFindings | Export-Csv -Path "mta-full-report.csv" -NoTypeInformation -Encoding UTF8
+    Write-Host "  Full report:   mta-full-report.csv ($($allFindings.Count) total findings)" -ForegroundColor Green
 } else {
     Write-Host "  No findings extracted from API. Reports will be in .tar files." -ForegroundColor Yellow
 }
@@ -412,8 +406,8 @@ foreach ($r in $results) {
 }
 
 Write-Host "`nOutputs:" -ForegroundColor White
-Write-Host "  CSV Report:    $outputCsv" -ForegroundColor White
-Write-Host "  App Summary:   $summaryFile" -ForegroundColor White
+Write-Host "  Issues CSV:    mta-issues-only.csv (actionable items)" -ForegroundColor White
+Write-Host "  Full CSV:      mta-full-report.csv (all findings)" -ForegroundColor White
 Write-Host "  HTML Reports:  *-report.tar" -ForegroundColor White
 Write-Host "  Copilot Setup: $instructionsFile" -ForegroundColor White
 Write-Host "`nDone!" -ForegroundColor Green
