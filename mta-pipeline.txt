@@ -318,58 +318,28 @@ foreach ($task in $results) {
         $analysisResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis" `
             -Method GET -ContentType "application/json" -UseDefaultCredentials
 
-        # Debug: show response structure
-        $props = $analysisResponse.PSObject.Properties.Name
-        Write-Host "  $($task.Component): Response has properties: $($props -join ', ')" -ForegroundColor Gray
-
-        # Handle different response formats
-        if ($analysisResponse.issues) {
-            foreach ($issue in $analysisResponse.issues) {
+        # The findings are in the 'insights' property
+        if ($analysisResponse.insights) {
+            foreach ($insight in $analysisResponse.insights) {
                 $allFindings += [PSCustomObject]@{
                     Application   = $task.Component
-                    Category      = $issue.category
-                    RuleID        = $issue.rule
-                    Description   = ($issue.description -replace "`n|`r", " ").Trim()
-                    Effort        = $issue.effort
-                    FilesAffected = if ($issue.files) { $issue.files.Count } else { 0 }
-                    Labels        = if ($issue.labels) { ($issue.labels -join "; ") } else { "" }
+                    Category      = $insight.category
+                    RuleID        = $insight.rule
+                    Description   = if ($insight.description) { ($insight.description -replace "`n|`r", " ").Trim() } else { "" }
+                    Effort        = $insight.effort
+                    FilesAffected = if ($insight.incidents) { $insight.incidents.Count } else { 0 }
+                    Labels        = if ($insight.labels) { ($insight.labels -join "; ") } else { "" }
+                    Name          = $insight.name
                 }
             }
         }
 
-        if ($analysisResponse.rulesets) {
-            foreach ($ruleset in $analysisResponse.rulesets) {
-                if ($ruleset.violations) {
-                    foreach ($violation in $ruleset.violations.PSObject.Properties) {
-                        $v = $violation.Value
-                        $allFindings += [PSCustomObject]@{
-                            Application   = $task.Component
-                            Category      = $v.category
-                            RuleID        = $violation.Name
-                            Description   = ($v.description -replace "`n|`r", " ").Trim()
-                            Effort        = $v.effort
-                            FilesAffected = if ($v.incidents) { $v.incidents.Count } else { 0 }
-                            Labels        = if ($v.labels) { ($v.labels -join "; ") } else { "" }
-                        }
-                    }
-                }
-            }
+        # Also check dependencies
+        if ($analysisResponse.dependencies) {
+            # Dependencies info can go into a separate file if needed
         }
 
-        # If response is an array of issues directly
-        if ($analysisResponse -is [System.Array]) {
-            foreach ($item in $analysisResponse) {
-                $allFindings += [PSCustomObject]@{
-                    Application   = $task.Component
-                    Category      = $item.category
-                    RuleID        = $item.rule
-                    Description   = if ($item.description) { ($item.description -replace "`n|`r", " ").Trim() } else { $item.name }
-                    Effort        = $item.effort
-                    FilesAffected = if ($item.incidents) { $item.incidents.Count } else { 0 }
-                    Labels        = if ($item.labels) { ($item.labels -join "; ") } else { "" }
-                }
-            }
-        }
+        Write-Host "  $($task.Component): $($analysisResponse.insights.Count) insights found" -ForegroundColor Green
 
     } catch {
         Write-Host "  $($task.Component): Could not fetch analysis data: $($_.Exception.Message)" -ForegroundColor Yellow
