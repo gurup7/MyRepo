@@ -1,16 +1,28 @@
 # =============================================================================
 # MTA Automation Script - Red Hat Migration Toolkit for Applications
-# Automates: Login → Create Application → Run Analysis → Fetch Report
+# Automates: Create Application → Run Analysis → Poll → Fetch Report
+# Auth: Windows SSO (UseDefaultCredentials) - no token needed
 # =============================================================================
 
 # --- Configuration ---
 $mtaBaseUrl = "https://mta-openshift-mta.apps.ilab-ctigtdc12d.ecs.dyn.nsroot.net"
 
+# --- SSL Certificate Bypass (for self-signed certs on OpenShift) ---
+if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
+    Add-Type @"
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+public class TrustAllCertsPolicy : ICertificatePolicy {
+    public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) { return true; }
+}
+"@
+}
+[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
 # --- Collect Inputs ---
 Write-Host "=== MTA Automation ===" -ForegroundColor Cyan
 
-$username = Read-Host "Enter MTA Username"
-$password = Read-Host "Enter MTA Password"
 $appName = Read-Host "Enter Application Name (e.g., my-service)"
 $csiId = Read-Host "Enter CSI ID"
 $gitUrl = Read-Host "Enter Git Repo URL (.git format)"
@@ -52,60 +64,19 @@ if ($selectedTargets.Count -eq 0) {
 Write-Host "`nTargets: $($selectedTargets -join ', ')" -ForegroundColor Green
 
 # =============================================================================
-# STEP 1: Login and Get Token
+# STEP 1: Verify Connectivity
 # =============================================================================
-Write-Host "`n[Step 1] Authenticating..." -ForegroundColor Cyan
-
-$loginBody = @{
-    user     = $username
-    password = $password
-} | ConvertTo-Json
+Write-Host "`n[Step 1] Verifying MTA connectivity..." -ForegroundColor Cyan
 
 try {
-    $loginResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/auth/login" `
-        -Method POST `
-        -Body $loginBody `
+    $existingApps = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
+        -Method GET `
         -ContentType "application/json" `
-        -SkipCertificateCheck:$false
-    
-    # Handle self-signed cert if needed
+        -UseDefaultCredentials
+    Write-Host "Connected. Found $($existingApps.Count) existing applications." -ForegroundColor Green
 } catch {
-    # Retry with certificate bypass for self-signed certs
-    try {
-        # PowerShell 5.x workaround for self-signed certs
-        if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
-            Add-Type @"
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-public class TrustAllCertsPolicy : ICertificatePolicy {
-    public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) { return true; }
-}
-"@
-        }
-        [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-
-        $loginResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/auth/login" `
-            -Method POST `
-            -Body $loginBody `
-            -ContentType "application/json"
-    } catch {
-        Write-Host "Login failed: $($_.Exception.Message)" -ForegroundColor Red
-        exit 1
-    }
-}
-
-$token = $loginResponse.token
-if (-not $token) {
-    Write-Host "Login failed. No token received." -ForegroundColor Red
+    Write-Host "Cannot connect to MTA: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
-}
-
-Write-Host "Authenticated successfully." -ForegroundColor Green
-$authHeaders = @{
-    Authorization  = "Bearer $token"
-    "Content-Type" = "application/json"
-    Accept         = "application/json"
 }
 
 # =============================================================================
@@ -128,18 +99,18 @@ try {
     $appResponse = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" `
         -Method POST `
         -Body $appPayload `
-        -Headers $authHeaders
-    
+        -ContentType "application/json" `
+        -UseDefaultCredentials
+
     $appId = $appResponse.id
     Write-Host "Application created. ID: $appId" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to create application: $($_.Exception.Message)" -ForegroundColor Red
-    
+    Write-Host "Create failed: $($_.Exception.Message)" -ForegroundColor Yellow
+
     # Check if app already exists
     Write-Host "Checking if application already exists..." -ForegroundColor Yellow
-    $existingApps = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications" -Method GET -Headers $authHeaders
     $existingApp = $existingApps | Where-Object { $_.name -eq $appName }
-    
+
     if ($existingApp) {
         $appId = $existingApp.id
         Write-Host "Found existing application. ID: $appId" -ForegroundColor Green
@@ -154,7 +125,6 @@ try {
 # =============================================================================
 Write-Host "`n[Step 3] Triggering analysis for application ID: $appId..." -ForegroundColor Cyan
 
-# Build YAML payload for analysis task
 $rulesYaml = ($selectedTargets | ForEach-Object { "      - $_" }) -join "`n"
 
 $analysisPayload = @"
@@ -173,24 +143,18 @@ $rulesYaml
     enabled: true
 "@
 
-$analysisHeaders = @{
-    Authorization  = "Bearer $token"
-    "Content-Type" = "application/x-yaml"
-    Accept         = "application/x-yaml"
-}
-
 try {
     $taskResponse = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/tasks" `
         -Method POST `
         -Body $analysisPayload `
-        -Headers $analysisHeaders
-    
-    # Extract task ID from response
+        -ContentType "application/x-yaml" `
+        -UseDefaultCredentials
+
     $taskContent = $taskResponse.Content
     if ($taskContent -match "id:\s*(\d+)") {
         $taskId = $matches[1]
     }
-    
+
     Write-Host "Analysis task created. Task ID: $taskId" -ForegroundColor Green
 } catch {
     Write-Host "Failed to trigger analysis: $($_.Exception.Message)" -ForegroundColor Red
@@ -209,15 +173,16 @@ $pollInterval = 15
 while ($elapsed -lt $maxWait) {
     Start-Sleep -Seconds $pollInterval
     $elapsed += $pollInterval
-    
+
     try {
         $taskStatus = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/tasks/$taskId" `
             -Method GET `
-            -Headers $authHeaders
-        
+            -ContentType "application/json" `
+            -UseDefaultCredentials
+
         $state = $taskStatus.state
         Write-Host "  Status: $state (${elapsed}s elapsed)" -ForegroundColor White
-        
+
         if ($state -eq "Succeeded") {
             Write-Host "Analysis completed successfully!" -ForegroundColor Green
             break
@@ -243,16 +208,12 @@ Write-Host "`n[Step 5] Fetching analysis reports..." -ForegroundColor Cyan
 # 5a. YAML Report
 $yamlReportFile = "$appName-analysis-report.yaml"
 try {
-    $yamlHeaders = @{
-        Authorization   = "Bearer $token"
-        Accept          = "application/x-yaml"
-        "Accept-Encoding" = "gzip, deflate, br"
-    }
-    $yamlReport = Invoke-RestMethod -Uri "$mtaBaseUrl/hub/applications/$appId/analysis" `
+    $yamlReport = Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$appId/analysis" `
         -Method GET `
-        -Headers $yamlHeaders
-    
-    $yamlReport | Out-File $yamlReportFile -Encoding UTF8
+        -Headers @{ Accept = "application/x-yaml" } `
+        -UseDefaultCredentials
+
+    $yamlReport.Content | Out-File $yamlReportFile -Encoding UTF8
     Write-Host "YAML report saved: $yamlReportFile" -ForegroundColor Green
 } catch {
     Write-Host "Could not fetch YAML report: $($_.Exception.Message)" -ForegroundColor Yellow
@@ -261,16 +222,11 @@ try {
 # 5b. Static HTML Report (ZIP)
 $zipReportFile = "$appName-analysis-report.zip"
 try {
-    $reportHeaders = @{
-        Authorization   = "Bearer $token"
-        Accept          = "application/octet-stream"
-        "Accept-Encoding" = "gzip, deflate, br"
-    }
     Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$appId/analysis/report" `
         -Method GET `
-        -Headers $reportHeaders `
+        -UseDefaultCredentials `
         -OutFile $zipReportFile
-    
+
     Write-Host "Static report saved: $zipReportFile" -ForegroundColor Green
 } catch {
     Write-Host "Could not fetch static report: $($_.Exception.Message)" -ForegroundColor Yellow
