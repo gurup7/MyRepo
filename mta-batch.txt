@@ -269,13 +269,14 @@ Write-Host "`n[Step 5] Fetching reports..." -ForegroundColor Cyan
 
 foreach ($task in $results) {
     if ($task.Status -like "Succeeded*") {
-        $reportFile = "$($task.Component)-report.zip"
+        $reportFile = "$($task.Component)-report.tar"
         try {
             Invoke-WebRequest -Uri "$mtaBaseUrl/hub/applications/$($task.AppID)/analysis/report" `
                 -Method GET -UseDefaultCredentials -UseBasicParsing `
                 -OutFile $reportFile
+
             $task.Report = $reportFile
-            Write-Host "  $($task.Component): HTML report saved -> $reportFile" -ForegroundColor Green
+            Write-Host "  $($task.Component): Report saved -> $reportFile" -ForegroundColor Green
         } catch {
             Write-Host "  $($task.Component): Could not fetch report: $($_.Exception.Message)" -ForegroundColor Yellow
             $task.Report = "Fetch failed"
