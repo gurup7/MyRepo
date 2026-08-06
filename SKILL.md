@@ -1,245 +1,600 @@
-# Code Discovery Skill
+# Angular 21 Unit Test Coverage Skill
 
 ## What This Skill Does
 
-Analyzes an existing codebase and produces a structured discovery report covering:
+Generates unit tests for Angular 21 applications to achieve >80% code coverage. Supports the current Karma + Jasmine + Istanbul setup (existing projects) and the new Vitest default (new projects or post-migration).
 
-- Application purpose and architecture
-- Entry points and execution flow
-- Business logic mapping
-- Component/class inventory
-- Configuration and runtime dependencies
-- External integrations (databases, APIs, messaging)
-- Unused, dead, or obsolete code identification
-- Modernization and refactoring opportunities
-- **Citi-specific:** Internal framework usage, CyberArk secret retrieval patterns, pipeline/quality-gate inventory, and cross-service boilerplate duplication
+## Important: Testing Framework Status in Angular 21
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| **Karma** | Deprecated but SUPPORTED | Use `"runner": "karma"` in angular.json. Works fine for existing projects. |
+| **Jasmine** | Supported with Karma | Test syntax (describe/it/expect) remains the same |
+| **Istanbul** | Supported via karma-coverage | Coverage reports + thresholds work normally |
+| **Vitest** | NEW DEFAULT for new projects | Uses `@vitest/coverage-v8` for coverage |
+
+**Decision:** If you already have Karma/Jasmine/Istanbul working — keep it. Focus on writing tests. Migrate to Vitest later.
 
 ## Primary Target
 
-Java and Spring Boot applications. Adaptable to other JVM-based or general backend codebases.
-
-**Optimized for:** Citi enterprise repositories using profile-based discovery (CMR services, ACE/Risk services, and mixed Java/Python delivery repos) with evidence-first detection of framework, pipeline, and security patterns.
+Angular 21 applications using:
+- Standalone components (default in Angular 21)
+- Signals and computed signals
+- New control flow (`@if`, `@for`, `@switch`, `@empty`, `@let`)
+- Angular 21 features: resource API, signal inputs, output functions, `inject()` pattern
 
 ## When to Activate
 
-Use this skill when you need to:
-
 | Goal | Example Prompt |
 |------|---------------|
-| Understand a codebase | "What does this application do?" |
-| Map business logic | "Trace the order processing flow end-to-end" |
-| Generate documentation | "Produce a component inventory for this module" |
-| Find dead code | "Which classes and methods appear unused?" |
-| Identify config requirements | "What configuration is needed to run this?" |
-| Prepare for modernization | "What should be refactored or removed?" |
-| Onboard new developers | "Create a handover document for this service" |
-| Audit Citi-specific patterns | "Are CyberArk and pipeline configs correct across all services?" |
-| Check quality gates | "What are the SonarQube/Snyk thresholds for this service?" |
-| Find cross-service duplication | "Which boilerplate classes are duplicated across sibling services?" |
-| Discover API surface | "What APIs does this service expose? What are the request/response contracts?" |
-| Assess test coverage | "Which critical paths have no test coverage?" |
-| Security audit | "Identify authentication/authorization gaps and input validation issues" |
-| Data model review | "Map all JPA entities and their relationships" |
-| Deployment readiness | "What's needed to containerize this service?" |
-| Dependency risk | "List all external dependencies and flag deprecated or vulnerable ones" |
+| Improve test coverage | "Generate tests to reach 80% coverage" |
+| Test a component | "Write unit tests for this component" |
+| Test a service | "Generate tests for UserService with mocked HTTP" |
+| Measure coverage | "How do I run coverage and enforce 80% threshold?" |
+| Test signals | "How to test signals and computed signals?" |
+| Test new control flow | "Write tests for @if and @for templates" |
 
-## How It Works
+## Phase 1: Measure Current Coverage
 
-The skill instructs Copilot to analyze code in layers:
+### With Karma/Istanbul (your current setup)
 
-1. **Structure first** — identify module layout, build system, runtime stack, and Citi profile indicators (CMR, ACE/Risk, batch, Python)
-2. **Entry points** — locate `main()`/Boot apps, controllers, runners, listeners, schedulers, and script launchers
-3. **Flows** — trace request/data/event flows through service layers and data/integration boundaries; include framework-specific DAO wiring only when present
-4. **Configuration** — map config files, profiles, environment overrides, secrets providers, governance files (`pipeline.yaml`, `threshold.json`)
-5. **External integrations** — catalog databases, APIs, messaging, caching, cloud services, and Citi-specific framework dependencies
-6. **API contracts** — document API surface (OpenAPI specs, versioning, DTOs, error contracts, pagination)
-7. **Data model** — map JPA entities, relationships, migrations, schema ownership per service
-8. **Deployment context** — identify containerization artifacts, health checks, scaling config, inter-service patterns
-9. **Test coverage** — assess unit/integration test presence, coverage gaps, and test quality
-10. **Security posture** — auth mechanisms, authorization model, input validation, CORS, vulnerable dependencies
-11. **Dead code** — flag unreferenced classes, uncalled methods, stale artifacts, and cross-service boilerplate duplication
-12. **Report** — produce findings in a consistent numbered format with prioritized follow-up actions
+```bash
+# Run tests with coverage
+ng test --no-watch --code-coverage
 
-## Discovery Workflow (Recommended)
+# Coverage report generated in: coverage/<project-name>/index.html
+```
 
-Use this execution sequence to improve consistency in large workspaces:
+**Enforce 80% threshold in `karma.conf.js`:**
+```javascript
+coverageReporter: {
+  dir: require('path').join(__dirname, './coverage/<project-name>'),
+  subdir: '.',
+  reporters: [
+    { type: 'html' },
+    { type: 'text-summary' },
+    { type: 'lcov' }
+  ],
+  check: {
+    global: {
+      statements: 80,
+      branches: 80,
+      functions: 80,
+      lines: 80
+    }
+  }
+}
+```
 
-1. **Scope first** — identify modules included and explicitly list modules not covered.
-2. **Read build files first** — determine versions, module graph, packaging, parent BOM usage, and Citi internal dependencies (`com.citi.*`).
-3. **Read governance files** — inspect `pipeline.yaml`, `threshold.json`, and `renovate.json`; capture actual stage names, promoted environments, and gate values from file contents.
-4. **Collect entry points** — HTTP, batch, message listeners, schedulers, startup hooks, and non-Java launchers/scripts where present.
-5. **Trace 2-5 critical flows** — inbound trigger -> service -> data/integration boundary with concrete class/file-path chains.
-6. **Inventory runtime config** — profiles, XML/property overlays, datasource and messaging blocks, secrets providers (CyberArk/Vault/env), and TLS/cert settings. Flag plaintext credentials as **Critical**.
-7. **Flag risk and dead code** — attach confidence and caveats. Check for repeated boilerplate patterns across sibling services and version drift in shared internal dependencies.
-8. **Close with prioritized actions** — security/credential issues first, operational risks second, quick wins third, modernization items last.
+### With Vitest (if migrated)
 
-## Output Format
+```bash
+# Install coverage package
+npm install @vitest/coverage-v8 --save-dev
 
-Reports follow this structure:
+# Run with coverage
+ng test --coverage --no-watch
+```
 
-1. Repository Summary
-2. Entry Points
-3. Business Logic Map
-4. Component Breakdown
-5. Configuration Inventory
-6. External Dependencies (API Contracts, Data Model, Deployment Topology)
-7. Test Coverage Posture
-8. Security Posture
-9. Unused or Suspicious Code
-10. Risks and Observations
-11. Suggested Follow-Up Actions
+## Phase 2: Identify Coverage Gaps
 
-## Required Output Additions
+After running coverage, the Istanbul HTML report (`coverage/index.html`) shows:
+- **Red lines** — not executed (need tests)
+- **Yellow lines** — partially covered (branches not fully tested)
+- **Green lines** — fully covered
 
-Include these short blocks before section 1 for better transparency:
+**Prioritize test generation:**
+1. Components with business logic (calculations, state management)
+2. Services with HTTP calls and data transformations
+3. Guards, interceptors, resolvers
+4. Pipes with transformation logic
+5. Directives
+6. Simple template-only components (lowest priority)
 
-- **Modules Covered**: exact modules analyzed in this pass
-- **Modules Not Covered**: modules intentionally skipped or not yet analyzed
-- **Evidence Standard**: all key findings must cite class + file path
-- **Confidence Usage**: `Confirmed`, `Likely`, `Uncertain`, `Assumption`
+## Phase 3: Generate Tests
 
-## Key Principles
+### Test Setup Structure (Karma/Jasmine)
 
-- **Evidence over assumptions** — findings cite specific files and classes
-- **Uncertainty is stated explicitly** — if the code is ambiguous, the report says so
-- **No invented business meaning** — only what the code actually demonstrates
-- **Read-only by default** — no modifications unless explicitly requested
-- **Layered analysis** — structure first, details second, for large codebases
-- **Coverage transparency** — state what was and was not analyzed in every report
-- **No silent assumptions** — prefix inferred behavior with confidence label
+```typescript
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MyComponent } from './my.component';
 
-## Scope Guardrails
+describe('MyComponent', () => {
+  let component: MyComponent;
+  let fixture: ComponentFixture<MyComponent>;
+  let compiled: HTMLElement;
 
-Unless explicitly requested, exclude:
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [MyComponent] // Standalone component = imports, NOT declarations
+    }).compileComponents();
 
-- Compiled/generated outputs (`target/`, `build/`, `out/`, generated stubs)
-- Dependency/vendor folders (`node_modules/`, `.gradle/`, `.mvn/`)
-- VCS internals (`.git/`)
+    fixture = TestBed.createComponent(MyComponent);
+    component = fixture.componentInstance;
+    compiled = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges(); // Initial render
+  });
 
-If the workspace is large, summarize by module first and offer drill-down follow-ups.
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});
+```
 
-## Citi Common Pattern Reference
+**Key difference in Angular 21:** Standalone components go in `imports`, not `declarations`.
 
-When analyzing Citi repositories, treat patterns as profile-based and confirm each one from evidence:
+---
 
-| Pattern | Indicator | Why It Matters |
-|---------|-----------|----------------|
-| Internal dependency profile | `com.citi.*` artifacts and BOM parents in `pom.xml` | Version drift/exclusions can change runtime behavior across sibling modules |
-| Governance files | `pipeline.yaml`, `threshold.json`, `renovate.json` in module root | CI/CD path and quality gates must be reported from source-of-truth files |
-| Delivery packaging hooks | `maven-antrun-plugin`, `exec-maven-plugin`, `install/`, `scripts/` | Final deliverable may be assembled outside plain `target/` artifacts |
-| Hybrid Spring configuration | `@ImportResource` + `spring*.xml` + property/yaml files | Bean wiring and env overrides may live in XML, not only annotations |
-| Secrets integration | CyberArk/Vault/env settings or bootstrap scripts | Plaintext credentials or fallback secrets are critical findings |
-| TLS/certificate posture | flags like disabled cert/hostname validation | Weak transport security is a high-impact operational risk |
-| Quality gate source | `threshold.json` key/value inspection | Thresholds vary by repo; do not hardcode values in reports |
-| Pipeline variability | build task can differ (`java-maven-build`, `python-build`, etc.) | Stage names/order are not universal; parse actual pipeline content |
-| Optional CMR profile | `cmr-em-microserviceframework`, `CommonDAO`, `CMRExceptionHandler` | Enables framework-specific checks only when this profile is present |
+### Pattern 1: Testing Signals
 
-### Cross-Service Boilerplate Duplication Rule
-In workspaces with >= 3 sibling services in the same profile:
-- If startup/security/config wrappers are near-identical across services -> **flag for shared library extraction**
-- If exception handlers are single-exception thin wrappers everywhere -> **flag for consolidation**
-- If DAO/service scaffolding repeats with minimal domain variance -> **flag for templating or framework centralization**
+Angular 21 uses signals extensively. They're just functions:
 
-## Quality Checklist
+```typescript
+// Component
+export class CounterComponent {
+  count = signal(0);
+  doubleCount = computed(() => this.count() * 2);
 
-Before finalizing a discovery report, verify:
+  increment() {
+    this.count.update(c => c + 1);
+  }
+}
 
-- [ ] Build system and versions are confirmed from build files
-- [ ] Module profile identified per service (CMR, ACE/Risk, Python, library, batch)
-- [ ] Internal dependency versions and major exclusions reviewed for cross-module drift
-- [ ] Entry points listed for each covered module (including non-HTTP/script runners when present)
-- [ ] At least one flow is traced per major runtime style (HTTP, batch, messaging)
-- [ ] Config/profile files inventoried (including XML imports); secret sources checked for plaintext leakage
-- [ ] API contracts documented (endpoints, DTOs, error model, versioning)
-- [ ] Data model mapped (entities, relationships, migrations, shared tables flagged)
-- [ ] Deployment artifacts identified (Dockerfile, K8s manifests, health checks, scaling config)
-- [ ] Test coverage assessed (ratio, gaps in critical paths, test quality indicators)
-- [ ] Security posture reviewed (auth, authz, input validation, CORS, vulnerable deps)
-- [ ] `threshold.json` quality gates documented from actual file values per module
-- [ ] `pipeline.yaml` stages/environments documented from actual file content per module
-- [ ] Dead/suspicious code includes confidence and caveat notes
-- [ ] Cross-service boilerplate duplication checked for each detected profile
-- [ ] Follow-up actions prioritized: security → operational → test gaps → maintainability → modernization
+// Tests
+describe('CounterComponent', () => {
+  let component: CounterComponent;
+  let fixture: ComponentFixture<CounterComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CounterComponent]
+    }).compileComponents();
+    fixture = TestBed.createComponent(CounterComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('should initialize count to 0', () => {
+    expect(component.count()).toBe(0);
+  });
+
+  it('should increment count', () => {
+    component.increment();
+    expect(component.count()).toBe(1);
+  });
+
+  it('should compute doubleCount correctly', () => {
+    component.count.set(5);
+    expect(component.doubleCount()).toBe(10);
+  });
+
+  it('should update DOM after signal change', () => {
+    component.count.set(3);
+    fixture.detectChanges(); // REQUIRED for DOM updates
+    const el = fixture.nativeElement.querySelector('[data-testid="count"]');
+    expect(el.textContent).toContain('3');
+  });
+});
+```
+
+**Rule:** Call `fixture.detectChanges()` after signal changes when testing DOM. Not needed when testing component properties directly.
+
+---
+
+### Pattern 2: Testing Signal Inputs (Angular 21)
+
+```typescript
+// Component with signal input
+export class GreetingComponent {
+  name = input.required<string>();
+  greeting = computed(() => `Hello, ${this.name()}!`);
+}
+
+// Tests
+describe('GreetingComponent', () => {
+  it('should display greeting with input name', () => {
+    const fixture = TestBed.createComponent(GreetingComponent);
+    // Set signal input using componentRef
+    fixture.componentRef.setInput('name', 'World');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Hello, World!');
+  });
+});
+```
+
+---
+
+### Pattern 3: Testing Services with HTTP
+
+```typescript
+import { TestBed } from '@angular/core/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { UserService } from './user.service';
+
+describe('UserService', () => {
+  let service: UserService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        UserService
+      ]
+    });
+    service = TestBed.inject(UserService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    httpMock.verify(); // Ensure no outstanding requests
+  });
+
+  it('should fetch users', () => {
+    const mockUsers = [{ id: 1, name: 'John' }];
+
+    service.getUsers().subscribe(users => {
+      expect(users).toEqual(mockUsers);
+    });
+
+    const req = httpMock.expectOne('/api/users');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockUsers);
+  });
+
+  it('should handle HTTP error', () => {
+    service.getUsers().subscribe({
+      error: (err) => {
+        expect(err.status).toBe(500);
+      }
+    });
+
+    const req = httpMock.expectOne('/api/users');
+    req.flush('Server Error', { status: 500, statusText: 'Internal Server Error' });
+  });
+});
+```
+
+**Note:** In Angular 21, use `provideHttpClient()` + `provideHttpClientTesting()` instead of deprecated `HttpClientTestingModule`.
+
+---
+
+### Pattern 4: Testing New Control Flow (@if, @for, @switch)
+
+```typescript
+// Template uses @if and @for
+// @if (items().length > 0) {
+//   @for (item of items(); track item.id) {
+//     <li [attr.data-testid]="'item-' + item.id">{{ item.name }}</li>
+//   } @empty {
+//     <p data-testid="empty-state">No items</p>
+//   }
+// }
+
+describe('ItemListComponent', () => {
+  let component: ItemListComponent;
+  let fixture: ComponentFixture<ItemListComponent>;
+  let compiled: HTMLElement;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [ItemListComponent]
+    }).compileComponents();
+    fixture = TestBed.createComponent(ItemListComponent);
+    component = fixture.componentInstance;
+    compiled = fixture.nativeElement;
+    fixture.detectChanges();
+  });
+
+  it('should show empty state when no items', () => {
+    component.items.set([]);
+    fixture.detectChanges();
+    const empty = compiled.querySelector('[data-testid="empty-state"]');
+    expect(empty).toBeTruthy();
+    expect(empty?.textContent).toContain('No items');
+  });
+
+  it('should render items with @for', () => {
+    component.items.set([
+      { id: 1, name: 'Item A' },
+      { id: 2, name: 'Item B' }
+    ]);
+    fixture.detectChanges();
+    const items = compiled.querySelectorAll('li');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('Item A');
+  });
+
+  it('should hide list when @if condition is false', () => {
+    component.items.set([]);
+    fixture.detectChanges();
+    const list = compiled.querySelector('ul');
+    expect(list).toBeNull();
+  });
+});
+```
+
+---
+
+### Pattern 5: Testing Components with Dependencies (inject() pattern)
+
+```typescript
+// Component using inject()
+export class DashboardComponent {
+  private userService = inject(UserService);
+  private router = inject(Router);
+  users = signal<User[]>([]);
+
+  loadUsers() {
+    this.userService.getUsers().subscribe(u => this.users.set(u));
+  }
+}
+
+// Tests
+describe('DashboardComponent', () => {
+  let component: DashboardComponent;
+  let fixture: ComponentFixture<DashboardComponent>;
+  let userServiceSpy: jasmine.SpyObj<UserService>;
+
+  beforeEach(async () => {
+    userServiceSpy = jasmine.createSpyObj('UserService', ['getUsers']);
+    userServiceSpy.getUsers.and.returnValue(of([{ id: 1, name: 'John' }]));
+
+    await TestBed.configureTestingModule({
+      imports: [DashboardComponent],
+      providers: [
+        { provide: UserService, useValue: userServiceSpy }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(DashboardComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('should load users on loadUsers()', () => {
+    component.loadUsers();
+    expect(component.users().length).toBe(1);
+    expect(component.users()[0].name).toBe('John');
+  });
+
+  it('should call service once', () => {
+    component.loadUsers();
+    expect(userServiceSpy.getUsers).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+---
+
+### Pattern 6: Testing Router Navigation
+
+```typescript
+import { provideRouter } from '@angular/router';
+import { Router } from '@angular/router';
+
+describe('NavigationComponent', () => {
+  let router: Router;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [NavigationComponent],
+      providers: [provideRouter([
+        { path: 'home', component: HomeComponent },
+        { path: 'about', component: AboutComponent }
+      ])]
+    }).compileComponents();
+
+    router = TestBed.inject(Router);
+  });
+
+  it('should navigate to home', async () => {
+    const spy = spyOn(router, 'navigate');
+    // trigger navigation
+    component.goHome();
+    expect(spy).toHaveBeenCalledWith(['/home']);
+  });
+});
+```
+
+**Note:** Use `provideRouter()` instead of deprecated `RouterTestingModule`.
+
+---
+
+### Pattern 7: Testing Pipes
+
+```typescript
+import { CurrencyFormatPipe } from './currency-format.pipe';
+
+describe('CurrencyFormatPipe', () => {
+  let pipe: CurrencyFormatPipe;
+
+  beforeEach(() => {
+    pipe = new CurrencyFormatPipe();
+  });
+
+  it('should format number as currency', () => {
+    expect(pipe.transform(1234.56)).toBe('$1,234.56');
+  });
+
+  it('should handle zero', () => {
+    expect(pipe.transform(0)).toBe('$0.00');
+  });
+
+  it('should handle null', () => {
+    expect(pipe.transform(null)).toBe('');
+  });
+
+  it('should handle negative values', () => {
+    expect(pipe.transform(-100)).toBe('-$100.00');
+  });
+});
+```
+
+---
+
+### Pattern 8: Testing Guards
+
+```typescript
+import { TestBed } from '@angular/core/testing';
+import { authGuard } from './auth.guard';
+import { AuthService } from './auth.service';
+import { Router } from '@angular/router';
+import { ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
+
+describe('authGuard', () => {
+  let authService: jasmine.SpyObj<AuthService>;
+  let router: jasmine.SpyObj<Router>;
+
+  beforeEach(() => {
+    authService = jasmine.createSpyObj('AuthService', ['isAuthenticated']);
+    router = jasmine.createSpyObj('Router', ['navigate']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthService, useValue: authService },
+        { provide: Router, useValue: router }
+      ]
+    });
+  });
+
+  it('should allow access when authenticated', () => {
+    authService.isAuthenticated.and.returnValue(true);
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+    expect(result).toBe(true);
+  });
+
+  it('should redirect to login when not authenticated', () => {
+    authService.isAuthenticated.and.returnValue(false);
+    TestBed.runInInjectionContext(() =>
+      authGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
+  });
+});
+```
+
+---
+
+### Pattern 9: Testing Interceptors
+
+```typescript
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { authInterceptor } from './auth.interceptor';
+
+describe('authInterceptor', () => {
+  let httpMock: HttpTestingController;
+  let httpClient: HttpClient;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting()
+      ]
+    });
+    httpClient = TestBed.inject(HttpClient);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  it('should add Authorization header', () => {
+    httpClient.get('/api/data').subscribe();
+    const req = httpMock.expectOne('/api/data');
+    expect(req.request.headers.has('Authorization')).toBeTrue();
+    expect(req.request.headers.get('Authorization')).toContain('Bearer');
+  });
+});
+```
+
+---
+
+## Phase 4: Coverage Strategy for 80%
+
+### Priority Matrix
+
+| Priority | Component Type | Typical Coverage Impact | Test Effort |
+|----------|---------------|------------------------|-------------|
+| 1 (High) | Services with logic | High (lots of branches) | Medium |
+| 2 (High) | Components with signals/computed | High (state transitions) | Medium |
+| 3 (Medium) | Guards & Interceptors | Medium (few lines, high value) | Low |
+| 4 (Medium) | Pipes | Medium (pure functions) | Low |
+| 5 (Low) | Template-only components | Low (just rendering) | Low |
+| 6 (Low) | Models/interfaces | N/A (no logic) | None |
+
+### Coverage Quick Wins
+
+1. **Test all services first** — they're pure logic, easy to mock, high line count
+2. **Pipes** — Pure functions, one test file covers entire pipe in minutes
+3. **Guards** — Usually 10-20 lines, 2-3 tests cover 100%
+4. **Component initialization** — `it('should create')` alone covers constructor + ngOnInit
+
+### Common Missed Branches
+
+- `if/else` in services — always test BOTH paths
+- Error handlers in HTTP — test error responses, not just success
+- `switch` cases — test EVERY case including default
+- Ternary operators in templates — test both true and false
+- `@if` blocks — test when condition is true AND false
+- Optional chaining `?.` — test when object is null/undefined
+
+## Angular 21 Deprecated APIs to Avoid in Tests
+
+| Old (Deprecated) | New (Use This) |
+|---|---|
+| `HttpClientTestingModule` | `provideHttpClient()` + `provideHttpClientTesting()` |
+| `RouterTestingModule` | `provideRouter([])` |
+| `declarations: [Component]` | `imports: [Component]` (standalone) |
+| `@Input() name: string` | `name = input<string>()` (signal input) |
+| `@Output() clicked = new EventEmitter()` | `clicked = output<void>()` |
+| `*ngIf`, `*ngFor` | `@if`, `@for` |
+| `ngOnInit` for data loading | `resource()` or `rxResource()` |
+| `fixture.componentInstance.name = 'x'` | `fixture.componentRef.setInput('name', 'x')` |
+
+## Future: Migrating to Vitest (When Ready)
+
+When the client is ready to migrate from Karma to Vitest:
+
+1. The test syntax (describe/it/expect) is nearly identical — TestBed works the same
+2. Main changes: import from `vitest` instead of relying on Jasmine globals
+3. Coverage uses `@vitest/coverage-v8` instead of Istanbul
+4. Angular CLI provides: `ng generate config vitest` for migration
+5. Official guide: https://angular.dev/guide/testing/migrating-to-vitest
+
+**Migration is NOT required for 80% coverage target.**
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `SKILL.md` | This file. Describes the skill for humans. |
-| `.github/copilot-instructions.md` | System-level directives that Copilot follows when this skill is active. |
+| `SKILL.md` | This file |
+| `copilot-instructions.md` | System-level directives for Copilot |
 
 ## Usage
 
-In GitHub Copilot Chat, reference the workspace and ask discovery questions:
-
 ```
-@workspace What does this application do? Produce a code discovery report.
+@workspace Generate unit tests for all untested components to reach 80% coverage
 ```
 
 ```
-@workspace Trace the payment processing flow from controller to database.
+@workspace Write tests for UserService including HTTP mocking and error handling
 ```
 
 ```
-@workspace Which classes in the service layer appear unused?
+@workspace Test the DashboardComponent which uses signals and computed values
 ```
 
 ```
-@workspace List all configuration files and explain what each controls.
+@workspace How do I enforce 80% coverage threshold in karma.conf.js?
 ```
 
-```
-@workspace Are CyberArk and pipeline configs consistent across all services?
-```
+## Sources
 
-```
-@workspace What quality gates are enforced and are any services at risk of failing them?
-```
-
-For large monorepos, scope your question to a module:
-
-```
-@workspace Analyze the order-service module and produce a discovery report.
-```
-
-## Common Discovery Scenarios (Ready-to-Use Prompts)
-
-### Full Codebase Onboarding
-```
-@workspace Produce a complete code discovery report covering all layers. I'm a new developer joining this team and need to understand the architecture, key flows, and dependencies.
-```
-
-### Pre-Containerization Assessment
-```
-@workspace Analyze this codebase for containerization readiness. Flag hardcoded paths, file I/O to local disk, localhost references, missing health checks, and environment-specific coupling.
-```
-
-### Security Audit Preparation
-```
-@workspace Identify all authentication and authorization mechanisms, secrets handling patterns, input validation gaps, CORS config, and potential SQL injection surfaces. Flag critical findings first.
-```
-
-### Dependency Risk Check
-```
-@workspace List all external dependencies with versions. Flag any that are deprecated, end-of-life, have known CVEs, or are internal Citi dependencies with version drift across modules.
-```
-
-### Technical Debt Inventory
-```
-@workspace Find dead code, duplicated logic across services, untested critical paths, and overly complex methods. Prioritize findings by impact and provide effort estimates for cleanup.
-```
-
-### API Surface Documentation
-```
-@workspace Document all REST APIs this service exposes. For each endpoint: HTTP method, path, request/response DTOs, validation rules, and error responses. Note any undocumented endpoints.
-```
-
-### Pre-Migration Impact Analysis
-```
-@workspace We plan to upgrade from Java 11 to 21 and Spring Boot 2.x to 3.x. Identify all code that will break: javax.* imports, removed/deprecated APIs, incompatible dependencies, and configuration changes needed.
-```
-
-### Cross-Service Architecture Map
-```
-@workspace Map all inter-service communication in this workspace. Show which service calls which, the protocol used (REST/messaging/gRPC), and identify any circular dependencies or tight coupling.
-```
+- [Angular Testing Guide (official)](https://angular.dev/guide/testing)
+- [Angular Karma Testing Guide (official)](https://angular.dev/guide/testing/karma)
+- [Testing Angular 21 with Vitest (dev.to)](https://dev.to/olayeancarh/testing-angular-21-components-with-vitest-a-complete-guide-8l2)
