@@ -1,0 +1,99 @@
+Minutes of Meeting
+
+Subject:
+TAD review for Customer Hub EMEA migration from on-prem VM to OpenShift / ECS cluster 
+
+Attendees:
+
+    Vaibhav – Infra Team / assigned architect 
+    Uma Maheswaran – Application Team 
+    Raj – Application Team 
+    Prakash Katri – Solution Architect Team 
+    Yoga – Tenant Ops 
+    Kishore – Tenant Ops 
+    Guru – Application Team / provided summary 
+
+Purpose of Meeting:
+
+    Review the TAD document prepared by Vaibhav across Application Team, Infra Architect, Solution Architect, and Tenant Ops 
+    Discuss deployment architecture and environment sizing for Customer Hub EMEA migration from VM to OpenShift 
+
+Key Discussion Points:
+
+     Project scope
+
+    Customer Hub EMEA applications are being moved from on-prem VM to OpenShift / ECS cluster .
+    The blueprint has already been completed, and the team is currently in the TAD review phase .
+
+     Architecture / flow
+
+    Current application is running on VM and is being planned for deployment as microservices on ECS/OpenShift .
+    The discussed flow includes NGINX to PHG and then to application microservices .
+
+     Microservices and sizing
+
+    Total ask is to deploy six microservices .
+    TPS considered is 1 for all microservices, and sizing is being calculated based on TPS .
+    SRT approval is still pending, so microservice names may change after governance confirmation .
+
+     Pod / CPU / memory decisions
+
+    For development, the standard approach is to start with one pod and add more only if utilization becomes high .
+    SIT/UAT discussions included differences between requested two pods and proposed one pod initially, with agreement that additional pods can be added later if needed .
+    CPU discussed:
+        Min CPU for prod: 200
+        Max CPU: 1500 
+    Memory discussed:
+        Pod memory size: 2 GB min and 3 GB max 
+        Allocation is based on workload/TPS, not simply requested memory 
+    Namespace-level memory discussed as 72 GB for the customer hub namespace .
+
+     Cluster / environment discussion
+
+    Team discussed use of Andromeda cluster for EMEA deployments .
+    It was noted that Andromeda cluster/SIT and production appeared full in capacity/utilization checks, while some other areas were underutilized .
+    A fallback / alternative involving cluster/server 103 and PXG namespace/cluster updates was discussed if Andromeda was not available .
+    Final confirmation was still needed from Raghu / Tenant Ops on whether existing Andromeda cluster can be used .
+
+     Namespace updates
+
+    The team discussed whether to use a new namespace or align to the existing one for GCHUB/customer hub .
+    Vaibhav agreed to update namespace/cluster details based on the final confirmed target environment .
+
+     Orion request
+
+    Team wants to raise the Orion request as soon as dev approval/confirmation is available .
+    It was agreed that the TAD/DA can proceed for dev so the request is not delayed, while production-related discussions continue in parallel .
+
+Decisions / Agreements:
+
+    TAD review proceeded with all relevant teams present .
+    Dev can move forward once confirmation is provided by Tenant Ops / Raghu, without waiting for all production decisions to be finalized .
+    Initial deployment will use standard sizing with one pod for dev/SIT where applicable, and scaling can be added later based on actual utilization .
+    Vaibhav will update DA/TAD details such as cluster and namespace based on the final confirmation .
+
+Open Items / Action Items:
+
+     Raghu / Tenant Ops
+
+    Confirm whether the existing Andromeda cluster can be used for deployment, especially for dev and production-related planning .
+
+     Vaibhav
+
+    Update DA/TAD with corrected cluster, namespace, and environment details, including possible 103/PXG changes if required .
+    Release the updated DA after confirmation is received .
+
+     Application Team
+
+    Share/send MOM with discussion details and include that dev cluster usage was confirmed/approved if finalized .
+    Continue working with governance team for final SRT approval, which may impact microservice naming .
+
+     Team
+
+    Raise Orion request once dev approval is confirmed .
+
+Meeting Closure:
+
+    The team concluded that they were good to close the call and capture all discussion points in the MOM .
+
+If you want, I can also reformat this into a formal MoM template with sections like Date, Attendees, Agenda, Discussion Summary, Decisions, and Action Items.
