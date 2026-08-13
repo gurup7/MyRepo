@@ -1,0 +1,25 @@
+Functional Architecture – Key Highlights (Verified ✓)
+✓ Single deal capture portal for Marketing Team (Bankers, AB), Service Delivery Center (SDC), and Operations — covering Banking (STP booking, amendments, rollover, preterms), Lending (NSTP booking, amendments, rollover, preterms), and Investments (FX, Advisory, Discretionary, Security Transfer, Security Accumulator, Security Option, Interest Rate Swap)
+✓ Downstream transaction routing to 5 systems — RSFS, RCP, ALS (batch/DB Link), Via TRE eDealer/FXLink for FX transactions, and Systematics
+✓ Global Platform feeds — P1, One Source, DMS, and Alert System (Maturity/Rollover Alerts) feed into EDT
+✓ Regional Platform dependencies (9 systems) — TPS2 Structured Deposit/FX Confirms, FX Rates Server, InView (Deal Booking, Pre-term), GPS (Ask, Bid, COF Rates), Common Services, IMPACS (Cash Accounts Status), SDP (Portfolio Visibility), FGE (Entitlements), eOasis (Margin for Security Transfer)
+✓ Self-service Maintenance module — Self Service Rules, Product Config, STP Controls, Counter Party Maintenance, Static Data Maintenance, Charges/Commission/Spread, CCY Cut-off Time, CCY Settlement Date
+✓ 4 functional modules within EDT: Banking, Lending, Investments, Maintenance
+Technical Architecture – Key Highlights (Verified ✓)
+✓ Presentation Layer — Servlet, JSP, HTML, Angular (confirms mixed legacy + modern UI)
+✓ Interface Layer — Web Services, MLI, JMS, DBLink, NDM (5 distinct integration protocols)
+✓ Business Layer — EJB + POJO with PRE/POST Business Validation Rules
+✓ Database Layer — JDBC with Connection Pool to Oracle 19c
+✓ Left-side integrations (Batch/DB Link — CPB-owned, blue) — DMS, P1/OS, TPS/TPS2, ALERTS, BI/BO, BOT
+✓ Right-side integrations:
+JMS → eBlotter, TPS2, eDealer (online/message-based)
+EJB → eOasis (collateral info), IMPACS (direct EJB call — this is notable, confirms EJB-based integration with external systems)
+MLI → RCP
+NDM → Alerts
+✓ Web Services (Backend, bottom) — GPS, DMS, eOasis, SDP, ALS (Loan Info) — online interfaces
+Deployment Architecture – Key Highlights (Verified ✓)
+✓ HTTPS end-to-end: Workstation → Load Balancer → OHS Web Server → WebLogic
+✓ Web/App Tier: WebLogic 14 (Node 1 + Node 2) — 2-node cluster
+✓ Database Tier: Oracle 19c (Server 1 + Server 2) — HA pair
+✓ Stack confirmed: Presentation Tier = Angular, Business Tier = Java and Java executables, Spring/Hibernate Framework Controller
+✓ OHS Web Server sits between Load Balancer and WebLogic (reverse proxy)
