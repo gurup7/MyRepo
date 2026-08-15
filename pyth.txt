@@ -149,6 +149,9 @@ PATTERNS = {
         "remediation": "Verify if this is a credential. If yes, move to vault",
     },
     # Sensitive variable names (Checkmarx keyword triggers)
+    # NOTE: In Java files, method names like getAccessToken() are typically
+    # false positives. The real concern is config/Helm/K8s/shell files where
+    # variable names appear in committed infra-as-code.
     "sensitive_varname": {
         "regex": build_sensitive_varname_pattern(),
         "type": "SENSITIVE_VARNAME",
@@ -227,6 +230,11 @@ def is_test_file(filepath: str) -> bool:
     return any(p.search(filepath) for p in TEST_PATH_PATTERNS)
 
 
+def is_java_file(filepath: str) -> bool:
+    """Check if file is a Java source file."""
+    return filepath.endswith(".java")
+
+
 # ============================================================================
 # SCANNER
 # ============================================================================
@@ -297,6 +305,15 @@ def scan_file(filepath: Path, repo_root: Path) -> List[Finding]:
                 severity = rule["severity"]
                 if is_test_file(relative_path):
                     severity = "LOW"
+
+                # In Java files, sensitive VARNAME findings are typically false positives
+                # (method names like getAccessToken, getSecret are standard patterns)
+                # Downgrade to LOW unless the line contains a hardcoded value assignment
+                if rule_name == "sensitive_varname" and is_java_file(relative_path):
+                    # Only flag as HIGH if it looks like a hardcoded assignment
+                    # e.g., String SECRET = "actual-value"
+                    if not re.search(r'=\s*"[^"]{8,}"', line):
+                        severity = "LOW"
 
                 finding = Finding(
                     file=relative_path,
