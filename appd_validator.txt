@@ -1,0 +1,627 @@
+"""
+AppDynamics Key Validator — Validates APPD secrets are remediated per Citi NGC pattern.
+
+Checks:
+1. No hardcoded APPD access keys (UUIDs) in Helm values
+2. Variable name APPD_ACCESSKEY renamed to APPD_ACCS_NICKNAME
+3. Deployment.yaml uses nickname pass-through (not direct injection)
+4. O2C annotation includes APPD NGC nickname
+5. entry-point.sh retrieves APPD key from NGC at runtime
+6. Consistency across all environment values files
+
+Usage:
+    python appd_key_validator.py C:\\path\\to\\repo
+    python appd_key_validator.py                      (scans current directory)
+
+Output:
+    - Console report with PASS/FAIL per check
+    - CSV report: appd_validation_report_<repo_name>.csv
+"""
+
+import argparse
+import csv
+import os
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Dict
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+# Files to check for APPD-specific patterns
+HELM_VALUES_PATTERNS = [
+    "helm/*-values.yaml",
+    "helm/values.yaml",
+    "helm/*-values.yml",
+]
+
+DEPLOYMENT_PATTERNS = [
+    "helm/templates/Deployment.yaml",
+    "helm/templates/deployment.yaml",
+    "helm/templates/Deployment.yml",
+]
+
+ENTRYPOINT_PATTERNS = [
+    "src/scripts/entry-point.sh",
+    "scripts/entry-point.sh",
+    "docker/entry-point.sh",
+    "entrypoint.sh",
+]
+
+ETH_FUNCTIONS_PATTERNS = [
+    "src/scripts/eth_functions.sh",
+    "scripts/eth_functions.sh",
+]
+
+# All config files to scan
+CONFIG_PATTERNS = [
+    "*.properties",
+    "*.yml",
+    "*.yaml",
+    "*.xml",
+    "*.sh",
+]
+
+EXCLUDE_DIRS = {
+    ".git", "target", "build", "node_modules",
+    ".mvn", ".gradle", ".idea", "bin", "obj",
+}
+
+# ============================================================================
+# VALIDATION CHECKS
+# ============================================================================
+
+@dataclass
+class ValidationResult:
+    check_id: str
+    check_name: str
+    file: str
+    line: int
+    status: str  # PASS, FAIL, WARNING
+    current_value: str
+    expected_value: str
+    remediation: str
+
+
+def find_files(repo_root: Path, patterns: list) -> List[Path]:
+    """Find files matching glob patterns."""
+    found = []
+    for pattern in patterns:
+        if "*" in pattern:
+            found.extend(repo_root.glob(pattern))
+        else:
+            candidate = repo_root / pattern
+            if candidate.exists():
+                found.append(candidate)
+    return [f for f in found if f.is_file()]
+
+
+def read_file_lines(filepath: Path) -> List[str]:
+    """Read file lines safely."""
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            return f.readlines()
+    except (IOError, OSError):
+        return []
+
+
+# ============================================================================
+# CHECK 1: Hardcoded APPD Access Keys in Helm Values
+# ============================================================================
+
+def check_hardcoded_appd_keys(repo_root: Path) -> List[ValidationResult]:
+    """Detect hardcoded APPD access keys (UUID values) in Helm values files."""
+    results = []
+    uuid_pattern = re.compile(
+        r'(APPD|appd|appdynamics).*?:\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+        re.IGNORECASE
+    )
+
+    files = find_files(repo_root, HELM_VALUES_PATTERNS)
+    for filepath in files:
+        lines = read_file_lines(filepath)
+        rel_path = str(filepath.relative_to(repo_root))
+        found_issue = False
+
+        for line_num, line in enumerate(lines, start=1):
+            if uuid_pattern.search(line):
+                results.append(ValidationResult(
+                    check_id="APPD-001",
+                    check_name="Hardcoded APPD access key (UUID)",
+                    file=rel_path,
+                    line=line_num,
+                    status="FAIL",
+                    current_value=line.strip()[:80],
+                    expected_value="APPD_ACCS_NICKNAME: CUR_<APP_ID>_<ENV>_APPD_ACCESS_KEY",
+                    remediation="Replace hardcoded UUID with NGC nickname",
+                ))
+                found_issue = True
+
+        if not found_issue and files:
+            results.append(ValidationResult(
+                check_id="APPD-001",
+                check_name="Hardcoded APPD access key (UUID)",
+                file=rel_path,
+                line=0,
+                status="PASS",
+                current_value="No hardcoded UUID found",
+                expected_value="NGC nickname only",
+                remediation="",
+            ))
+
+    return results
+
+
+# ============================================================================
+# CHECK 2: APPD_ACCESSKEY Variable Name (Should Be Renamed)
+# ============================================================================
+
+def check_appd_varname(repo_root: Path) -> List[ValidationResult]:
+    """Check if APPD_ACCESSKEY variable name exists (should be APPD_ACCS_NICKNAME)."""
+    results = []
+    bad_names = re.compile(
+        r'\b(APPD_ACCESSKEY|APPD_ACCESS_KEY|APPDYNAMICS_AGENT_ACCOUNT_ACCESS_KEY)\b',
+        re.IGNORECASE
+    )
+
+    # Check Helm values
+    files = find_files(repo_root, HELM_VALUES_PATTERNS)
+    # Check Deployment templates
+    files.extend(find_files(repo_root, DEPLOYMENT_PATTERNS))
+
+    for filepath in files:
+        lines = read_file_lines(filepath)
+        rel_path = str(filepath.relative_to(repo_root))
+
+        for line_num, line in enumerate(lines, start=1):
+            # Skip comments
+            if line.strip().startswith("#"):
+                continue
+
+            match = bad_names.search(line)
+            if match:
+                matched_name = match.group(0)
+
+                # In Deployment.yaml, APPDYNAMICS_AGENT_ACCOUNT_ACCESS_KEY as env var name
+                # being set from a nickname value is still a problem (the env var NAME triggers)
+                # unless it's the entry-point.sh export (which is runtime)
+                results.append(ValidationResult(
+                    check_id="APPD-002",
+                    check_name="Sensitive APPD variable name (Checkmarx trigger)",
+                    file=rel_path,
+                    line=line_num,
+                    status="FAIL",
+                    current_value=matched_name,
+                    expected_value="APPD_ACCS_NICKNAME (Helm) or APPD_SECRET_NICKNAME (Deployment)",
+                    remediation=f"Rename '{matched_name}' to avoid ACCESSKEY/ACCESS_KEY keywords",
+                ))
+
+    if not results:
+        results.append(ValidationResult(
+            check_id="APPD-002",
+            check_name="Sensitive APPD variable name (Checkmarx trigger)",
+            file="(all Helm/Deployment files)",
+            line=0,
+            status="PASS",
+            current_value="No APPD_ACCESSKEY/ACCESS_KEY found",
+            expected_value="APPD_ACCS_NICKNAME",
+            remediation="",
+        ))
+
+    return results
+
+
+# ============================================================================
+# CHECK 3: O2C Annotation Includes APPD Nickname
+# ============================================================================
+
+def check_o2c_annotation(repo_root: Path) -> List[ValidationResult]:
+    """Verify O2C secretsnicknames annotation includes APPD NGC nickname."""
+    results = []
+    o2c_pattern = re.compile(r'ecs\.o2c\.secretsnicknames\s*:\s*"?(.+?)"?\s*$')
+    appd_ref = re.compile(r'APPD_ACCS_NICKNAME|appd.*NICKNAME', re.IGNORECASE)
+
+    files = find_files(repo_root, DEPLOYMENT_PATTERNS)
+    if not files:
+        results.append(ValidationResult(
+            check_id="APPD-003",
+            check_name="O2C annotation includes APPD nickname",
+            file="helm/templates/Deployment.yaml",
+            line=0,
+            status="WARNING",
+            current_value="Deployment.yaml not found",
+            expected_value="ecs.o2c.secretsnicknames includes APPD nickname",
+            remediation="Verify Deployment.yaml exists and has O2C annotation",
+        ))
+        return results
+
+    for filepath in files:
+        lines = read_file_lines(filepath)
+        rel_path = str(filepath.relative_to(repo_root))
+        found_o2c = False
+
+        for line_num, line in enumerate(lines, start=1):
+            match = o2c_pattern.search(line)
+            if match:
+                found_o2c = True
+                annotation_value = match.group(1)
+
+                if appd_ref.search(annotation_value):
+                    results.append(ValidationResult(
+                        check_id="APPD-003",
+                        check_name="O2C annotation includes APPD nickname",
+                        file=rel_path,
+                        line=line_num,
+                        status="PASS",
+                        current_value=annotation_value[:80],
+                        expected_value="Contains APPD NGC nickname reference",
+                        remediation="",
+                    ))
+                else:
+                    results.append(ValidationResult(
+                        check_id="APPD-003",
+                        check_name="O2C annotation includes APPD nickname",
+                        file=rel_path,
+                        line=line_num,
+                        status="FAIL",
+                        current_value=annotation_value[:80],
+                        expected_value="Must include {{ .Values.appd.APPD_ACCS_NICKNAME }}",
+                        remediation="Add APPD NGC nickname to ecs.o2c.secretsnicknames annotation",
+                    ))
+
+        if not found_o2c:
+            results.append(ValidationResult(
+                check_id="APPD-003",
+                check_name="O2C annotation includes APPD nickname",
+                file=rel_path,
+                line=0,
+                status="FAIL",
+                current_value="O2C annotation not found",
+                expected_value="ecs.o2c.secretsnicknames with APPD nickname",
+                remediation="Add ecs.o2c.secretsnicknames annotation to Deployment.yaml",
+            ))
+
+    return results
+
+
+# ============================================================================
+# CHECK 4: entry-point.sh Has APPD NGC Retrieval
+# ============================================================================
+
+def check_entrypoint_appd_retrieval(repo_root: Path) -> List[ValidationResult]:
+    """Verify entry-point.sh retrieves APPD key from NGC at runtime."""
+    results = []
+    appd_retrieval = re.compile(
+        r'download_eth_secret\s+\$\{?APPD_SECRET_NICKNAME\}?',
+        re.IGNORECASE
+    )
+    appd_export = re.compile(
+        r'export\s+APPDYNAMICS_AGENT_ACCOUNT_ACCESS_KEY\s*=',
+        re.IGNORECASE
+    )
+
+    files = find_files(repo_root, ENTRYPOINT_PATTERNS)
+    if not files:
+        results.append(ValidationResult(
+            check_id="APPD-004",
+            check_name="entry-point.sh retrieves APPD from NGC",
+            file="(entry-point.sh not found)",
+            line=0,
+            status="WARNING",
+            current_value="File not found",
+            expected_value="download_eth_secret ${APPD_SECRET_NICKNAME}",
+            remediation="Locate entry-point.sh and add APPD NGC retrieval block",
+        ))
+        return results
+
+    for filepath in files:
+        lines = read_file_lines(filepath)
+        rel_path = str(filepath.relative_to(repo_root))
+        content = "".join(lines)
+
+        has_retrieval = bool(appd_retrieval.search(content))
+        has_export = bool(appd_export.search(content))
+
+        if has_retrieval and has_export:
+            results.append(ValidationResult(
+                check_id="APPD-004",
+                check_name="entry-point.sh retrieves APPD from NGC",
+                file=rel_path,
+                line=0,
+                status="PASS",
+                current_value="download_eth_secret + export found",
+                expected_value="APPD key retrieved from NGC and exported",
+                remediation="",
+            ))
+        elif has_export and not has_retrieval:
+            results.append(ValidationResult(
+                check_id="APPD-004",
+                check_name="entry-point.sh retrieves APPD from NGC",
+                file=rel_path,
+                line=0,
+                status="FAIL",
+                current_value="export exists but NGC retrieval missing",
+                expected_value="download_eth_secret ${APPD_SECRET_NICKNAME} before export",
+                remediation="Add: download_eth_secret ${APPD_SECRET_NICKNAME} before the export line",
+            ))
+        else:
+            results.append(ValidationResult(
+                check_id="APPD-004",
+                check_name="entry-point.sh retrieves APPD from NGC",
+                file=rel_path,
+                line=0,
+                status="FAIL",
+                current_value="No APPD NGC retrieval found",
+                expected_value="download_eth_secret ${APPD_SECRET_NICKNAME} + export",
+                remediation="Add APPD NGC retrieval block to entry-point.sh",
+            ))
+
+    return results
+
+
+# ============================================================================
+# CHECK 5: Cross-Environment Consistency
+# ============================================================================
+
+def check_env_consistency(repo_root: Path) -> List[ValidationResult]:
+    """Verify APPD NGC nickname exists in ALL environment values files."""
+    results = []
+    files = find_files(repo_root, HELM_VALUES_PATTERNS)
+
+    if not files:
+        results.append(ValidationResult(
+            check_id="APPD-005",
+            check_name="Cross-environment consistency",
+            file="(no Helm values files found)",
+            line=0,
+            status="WARNING",
+            current_value="No Helm values files",
+            expected_value="APPD_ACCS_NICKNAME in all env files",
+            remediation="Verify Helm values file locations",
+        ))
+        return results
+
+    appd_nickname_pattern = re.compile(r'APPD_ACCS_NICKNAME\s*:', re.IGNORECASE)
+    env_status = {}
+
+    for filepath in files:
+        content = "".join(read_file_lines(filepath))
+        rel_path = str(filepath.relative_to(repo_root))
+        has_nickname = bool(appd_nickname_pattern.search(content))
+        env_status[rel_path] = has_nickname
+
+    # Check consistency
+    all_have = all(env_status.values())
+    none_have = not any(env_status.values())
+
+    if all_have:
+        results.append(ValidationResult(
+            check_id="APPD-005",
+            check_name="Cross-environment consistency",
+            file="(all Helm values files)",
+            line=0,
+            status="PASS",
+            current_value=f"APPD_ACCS_NICKNAME found in {len(env_status)} files",
+            expected_value="Consistent across all environments",
+            remediation="",
+        ))
+    elif none_have:
+        for fpath in env_status:
+            results.append(ValidationResult(
+                check_id="APPD-005",
+                check_name="Cross-environment consistency",
+                file=fpath,
+                line=0,
+                status="FAIL",
+                current_value="APPD_ACCS_NICKNAME not found",
+                expected_value="APPD_ACCS_NICKNAME: CUR_<APP_ID>_<ENV>_APPD_ACCESS_KEY",
+                remediation="Add APPD_ACCS_NICKNAME with correct NGC nickname for this environment",
+            ))
+    else:
+        # Inconsistent — some have it, some don't
+        for fpath, has_it in env_status.items():
+            results.append(ValidationResult(
+                check_id="APPD-005",
+                check_name="Cross-environment consistency",
+                file=fpath,
+                line=0,
+                status="PASS" if has_it else "FAIL",
+                current_value="APPD_ACCS_NICKNAME present" if has_it else "APPD_ACCS_NICKNAME MISSING",
+                expected_value="Must be in ALL environment files",
+                remediation="" if has_it else "Add APPD_ACCS_NICKNAME for this environment",
+            ))
+
+    return results
+
+
+# ============================================================================
+# CHECK 6: General APPD Patterns in All Config Files
+# ============================================================================
+
+def check_appd_in_all_configs(repo_root: Path) -> List[ValidationResult]:
+    """Scan all config files for any remaining APPD hardcoded values."""
+    results = []
+    uuid_in_appd_context = re.compile(
+        r'(APPD|appd|appdynamics|ACCOUNT_ACCESS).*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+        re.IGNORECASE
+    )
+
+    for filepath in repo_root.rglob("*"):
+        if not filepath.is_file():
+            continue
+        if any(excluded in filepath.parts for excluded in EXCLUDE_DIRS):
+            continue
+
+        name = filepath.name
+        is_config = (
+            name.endswith((".properties", ".yml", ".yaml", ".xml", ".sh"))
+            or name == "Dockerfile"
+            or name.startswith("docker-compose")
+        )
+        if not is_config:
+            continue
+
+        lines = read_file_lines(filepath)
+        rel_path = str(filepath.relative_to(repo_root))
+
+        for line_num, line in enumerate(lines, start=1):
+            if line.strip().startswith("#"):
+                continue
+            if uuid_in_appd_context.search(line):
+                results.append(ValidationResult(
+                    check_id="APPD-006",
+                    check_name="APPD hardcoded key in config file",
+                    file=rel_path,
+                    line=line_num,
+                    status="FAIL",
+                    current_value=line.strip()[:80],
+                    expected_value="NGC nickname (no plaintext UUID)",
+                    remediation="Replace hardcoded APPD key with NGC nickname",
+                ))
+
+    if not results:
+        results.append(ValidationResult(
+            check_id="APPD-006",
+            check_name="APPD hardcoded key in config file",
+            file="(all config files)",
+            line=0,
+            status="PASS",
+            current_value="No hardcoded APPD UUIDs in config files",
+            expected_value="Clean",
+            remediation="",
+        ))
+
+    return results
+
+
+# ============================================================================
+# REPORTING
+# ============================================================================
+
+def print_report(results: List[ValidationResult]):
+    print("\n" + "=" * 70)
+    print("APPDYNAMICS KEY VALIDATION REPORT")
+    print("=" * 70)
+
+    pass_count = sum(1 for r in results if r.status == "PASS")
+    fail_count = sum(1 for r in results if r.status == "FAIL")
+    warn_count = sum(1 for r in results if r.status == "WARNING")
+
+    print(f"\nSummary: {pass_count} PASS | {fail_count} FAIL | {warn_count} WARNING")
+
+    # Group by check_id
+    checks = {}
+    for r in results:
+        checks.setdefault(r.check_id, []).append(r)
+
+    for check_id in sorted(checks.keys()):
+        check_results = checks[check_id]
+        check_name = check_results[0].check_name
+        statuses = [r.status for r in check_results]
+
+        if "FAIL" in statuses:
+            overall = "✗ FAIL"
+        elif "WARNING" in statuses:
+            overall = "⚠ WARNING"
+        else:
+            overall = "✓ PASS"
+
+        print(f"\n{'-' * 70}")
+        print(f"[{check_id}] {check_name} — {overall}")
+        print(f"{'-' * 70}")
+
+        for r in check_results:
+            if r.status == "PASS":
+                print(f"  ✓ {r.file}: {r.current_value}")
+            elif r.status == "FAIL":
+                print(f"  ✗ {r.file}:{r.line}")
+                print(f"    Found: {r.current_value}")
+                print(f"    Expected: {r.expected_value}")
+                print(f"    Fix: {r.remediation}")
+            else:
+                print(f"  ⚠ {r.file}: {r.current_value}")
+                print(f"    Action: {r.remediation}")
+
+    # Final verdict
+    print(f"\n{'=' * 70}")
+    if fail_count > 0:
+        print(f"VERDICT: ✗ NON-COMPLIANT — {fail_count} check(s) failed")
+        print("Action: Remediate all FAIL items before merging.")
+    elif warn_count > 0:
+        print(f"VERDICT: ⚠ PARTIALLY COMPLIANT — {warn_count} warning(s)")
+        print("Action: Review warnings. May indicate missing files in repo structure.")
+    else:
+        print("VERDICT: ✓ COMPLIANT — All APPD checks passed")
+    print("=" * 70)
+
+
+def export_csv(results: List[ValidationResult], output_path: str):
+    with open(output_path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([
+            "Check ID", "Check Name", "File", "Line",
+            "Status", "Current Value", "Expected Value", "Remediation"
+        ])
+        for r in results:
+            writer.writerow([
+                r.check_id, r.check_name, r.file, r.line,
+                r.status, r.current_value, r.expected_value, r.remediation
+            ])
+    print(f"\nCSV report exported to: {output_path}")
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Validate AppDynamics key remediation per Citi NGC pattern"
+    )
+    parser.add_argument(
+        "repo_path",
+        nargs="?",
+        default=".",
+        help="Path to the Git repository to validate (defaults to current directory)"
+    )
+
+    args = parser.parse_args()
+    repo_path = os.path.abspath(args.repo_path)
+    repo_name = os.path.basename(repo_path)
+    repo_root = Path(repo_path)
+
+    if not repo_root.is_dir():
+        print(f"ERROR: {repo_path} is not a valid directory")
+        sys.exit(1)
+
+    print(f"\nValidating APPD key compliance in: {repo_root}")
+
+    # Run all checks
+    all_results = []
+    all_results.extend(check_hardcoded_appd_keys(repo_root))
+    all_results.extend(check_appd_varname(repo_root))
+    all_results.extend(check_o2c_annotation(repo_root))
+    all_results.extend(check_entrypoint_appd_retrieval(repo_root))
+    all_results.extend(check_env_consistency(repo_root))
+    all_results.extend(check_appd_in_all_configs(repo_root))
+
+    # Report
+    print_report(all_results)
+
+    # Export CSV
+    output_file = f"appd_validation_report_{repo_name}.csv"
+    export_csv(all_results, output_file)
+
+    # Exit code
+    fail_count = sum(1 for r in all_results if r.status == "FAIL")
+    if fail_count > 0:
+        sys.exit(1)
+    else:
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
