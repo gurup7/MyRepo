@@ -1,0 +1,450 @@
+"""
+AppDynamics Key Remediator — Auto-fixes APPD secret exposure per Citi NGC pattern.
+
+This script IMPLEMENTS the fix, not just detects problems.
+
+What it does:
+1. Renames APPD_ACCESSKEY → APPD_ACCS_NICKNAME in all Helm values files
+2. Replaces hardcoded APPD UUID keys with NGC nickname placeholder
+3. Updates Deployment.yaml (O2C annotation, env var rename, nickname pass-through)
+4. Adds APPD NGC retrieval block to entry-point.sh
+5. Renames SA_CALL_SECRET → SA_CALL_SCRT in eth_functions.sh
+6. Renames ETH_SECRET_NICKNAME → ETH_NICKNAME across all files
+7. Renames MONGO_SECRET_NICKNAME → MONGO_NICKNAME across all files
+
+Usage:
+    python appd_remediate.py C:\\path\\to\\local\\repo
+    python appd_remediate.py C:\\path\\to\\local\\repo --dry-run   (preview only)
+
+Output:
+    - Modified files in place
+    - Console report of all changes made
+    - CSV report: remediation_report_<repo_name>.csv
+"""
+
+import argparse
+import csv
+import os
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Tuple
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+EXCLUDE_DIRS = {
+    ".git", "target", "build", "node_modules",
+    ".mvn", ".gradle", ".idea", "bin", "obj",
+}
+
+# Variable renames to apply (order matters for overlapping patterns)
+RENAMES = [
+    ("ETH_SECRET_ENVIRONMENT", "ETH_ENVIRONMENT"),
+    ("ETH_SECRET_NICKNAME", "ETH_NICKNAME"),
+    ("MONGO_SECRET_NICKNAME", "MONGO_NICKNAME"),
+    ("APPD_ACCESSKEY", "APPD_ACCS_NICKNAME"),
+    ("SA_CALL_SECRET", "SA_CALL_SCRT"),
+]
+
+# File patterns to process for renames
+RENAME_FILE_PATTERNS = (
+    ".yaml", ".yml", ".properties", ".sh", ".xml",
+)
+
+# Patterns to find specific files recursively (not fixed paths)
+DEPLOYMENT_NAME = re.compile(r'^[Dd]eployment\.ya?ml$')
+ENTRYPOINT_NAME = re.compile(r'entry[-_]?point\.sh$|entrypoint\.sh$')
+
+# Environment config directories
+ENV_CONFIG_DIRS = {"COB", "DEV", "PROD", "SIT", "UAT2", "UAT"}
+
+# ============================================================================
+# DATA
+# ============================================================================
+
+@dataclass
+class Change:
+    file: str
+    line: int
+    change_type: str
+    before: str
+    after: str
+
+
+# ============================================================================
+# CORE FUNCTIONS
+# ============================================================================
+
+def should_process(filepath: Path) -> bool:
+    """Check if file should be processed."""
+    if any(excluded in filepath.parts for excluded in EXCLUDE_DIRS):
+        return False
+    return (
+        filepath.suffix in RENAME_FILE_PATTERNS
+        or filepath.name == "Dockerfile"
+        or filepath.name == "pipeline.yaml"
+    )
+
+
+def find_all_files(repo_root: Path) -> List[Path]:
+    """Find all processable files."""
+    files = []
+    for filepath in repo_root.rglob("*"):
+        if filepath.is_file() and should_process(filepath):
+            files.append(filepath)
+    return files
+
+
+def read_file(filepath: Path) -> str:
+    """Read file content."""
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except (IOError, OSError):
+        return ""
+
+
+def write_file(filepath: Path, content: str):
+    """Write file content."""
+    with open(filepath, "w", encoding="utf-8", newline="") as f:
+        f.write(content)
+
+
+# ============================================================================
+# REMEDIATION 1: Bulk Variable Rename
+# ============================================================================
+
+def remediate_renames(repo_root: Path, dry_run: bool) -> List[Change]:
+    """Apply all variable renames across the repo."""
+    changes = []
+    files = find_all_files(repo_root)
+
+    for filepath in files:
+        content = read_file(filepath)
+        if not content:
+            continue
+
+        original = content
+        rel_path = str(filepath.relative_to(repo_root))
+
+        for old_name, new_name in RENAMES:
+            if old_name in content:
+                # Track each line that changes
+                lines = content.split("\n")
+                for i, line in enumerate(lines):
+                    if old_name in line:
+                        changes.append(Change(
+                            file=rel_path,
+                            line=i + 1,
+                            change_type="RENAME",
+                            before=f"{old_name}",
+                            after=f"{new_name}",
+                        ))
+
+                # Apply the rename
+                content = content.replace(old_name, new_name)
+
+        # Also handle Helm template references: .Values.OLD_NAME → .Values.NEW_NAME
+        for old_name, new_name in RENAMES:
+            old_ref = f".Values.{old_name}"
+            new_ref = f".Values.{new_name}"
+            if old_ref in content:
+                content = content.replace(old_ref, new_ref)
+
+            old_ref2 = f".Values.appd.{old_name}"
+            new_ref2 = f".Values.appd.{new_name}"
+            if old_ref2 in content:
+                content = content.replace(old_ref2, new_ref2)
+
+        if content != original and not dry_run:
+            write_file(filepath, content)
+
+    return changes
+
+
+# ============================================================================
+# REMEDIATION 2: Replace Hardcoded UUID with NGC Placeholder
+# ============================================================================
+
+def remediate_hardcoded_uuids(repo_root: Path, dry_run: bool) -> List[Change]:
+    """Replace hardcoded APPD UUIDs with NGC nickname placeholder."""
+    changes = []
+    uuid_pattern = re.compile(
+        r'(APPD[_\w]*\s*:\s*)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+        re.IGNORECASE
+    )
+
+    for filepath in repo_root.rglob("*"):
+        if not filepath.is_file() or not should_process(filepath):
+            continue
+
+        content = read_file(filepath)
+        if not content:
+            continue
+
+        rel_path = str(filepath.relative_to(repo_root))
+        original = content
+
+        lines = content.split("\n")
+        new_lines = []
+        for i, line in enumerate(lines):
+            match = uuid_pattern.search(line)
+            if match:
+                old_line = line
+                # Replace UUID with placeholder
+                new_line = uuid_pattern.sub(
+                    r'\1<REPLACE_WITH_NGC_NICKNAME>',
+                    line
+                )
+                new_lines.append(new_line)
+                changes.append(Change(
+                    file=rel_path,
+                    line=i + 1,
+                    change_type="REPLACE_HARDCODED_KEY",
+                    before=old_line.strip(),
+                    after=new_line.strip(),
+                ))
+            else:
+                new_lines.append(line)
+
+        new_content = "\n".join(new_lines)
+        if new_content != original and not dry_run:
+            write_file(filepath, new_content)
+
+    return changes
+
+
+# ============================================================================
+# REMEDIATION 3: Update Deployment.yaml — Direct Injection Fix
+# ============================================================================
+
+def remediate_deployment(repo_root: Path, dry_run: bool) -> List[Change]:
+    """Fix Deployment.yaml: rename env vars, update secret injection pattern."""
+    changes = []
+
+    # Find Deployment.yaml anywhere in the repo
+    candidates = []
+    for filepath in repo_root.rglob("*"):
+        if filepath.is_file() and DEPLOYMENT_NAME.search(filepath.name):
+            if not any(excluded in filepath.parts for excluded in EXCLUDE_DIRS):
+                candidates.append(filepath)
+
+    for filepath in candidates:
+        content = read_file(filepath)
+        if not content:
+            continue
+
+        rel_path = str(filepath.relative_to(repo_root))
+        original = content
+
+        # Fix: Replace direct APPD key injection with nickname pass-through
+        # BEFORE: - name: APPDYNAMICS_AGENT_ACCOUNT_ACCESS_KEY
+        #           value: {{ .Values.appd.APPD_ACCESSKEY }}
+        # AFTER:  - name: APPD_SECRET_NICKNAME
+        #           value: "{{ .Values.appd.APPD_ACCS_NICKNAME }}"
+        appd_direct = re.compile(
+            r'(-\s*name:\s*)APPDYNAMICS_AGENT_ACCOUNT_ACCESS_KEY',
+            re.IGNORECASE
+        )
+        if appd_direct.search(content):
+            content = appd_direct.sub(r'\1APPD_SECRET_NICKNAME', content)
+            changes.append(Change(
+                file=rel_path,
+                line=0,
+                change_type="DEPLOYMENT_ENV_RENAME",
+                before="- name: APPDYNAMICS_AGENT_ACCOUNT_ACCESS_KEY",
+                after="- name: APPD_SECRET_NICKNAME",
+            ))
+
+        if content != original and not dry_run:
+            write_file(filepath, content)
+
+    return changes
+
+
+# ============================================================================
+# REMEDIATION 4: Add APPD NGC Retrieval to entry-point.sh
+# ============================================================================
+
+APPD_RETRIEVAL_BLOCK = """
+# Retrieve AppDynamics access key from NGC and export to environment
+echo "APPD_SECRET_NICKNAME is ${APPD_SECRET_NICKNAME}"
+download_eth_secret ${APPD_SECRET_NICKNAME}
+export APPDYNAMICS_AGENT_ACCOUNT_ACCESS_KEY=${SA_CALL_SCRT}
+"""
+
+
+def remediate_entrypoint(repo_root: Path, dry_run: bool) -> List[Change]:
+    """Add APPD NGC retrieval block to entry-point.sh if missing."""
+    changes = []
+
+    # Find entry-point.sh anywhere in the repo
+    candidates = []
+    for filepath in repo_root.rglob("*"):
+        if filepath.is_file() and ENTRYPOINT_NAME.search(filepath.name):
+            if not any(excluded in filepath.parts for excluded in EXCLUDE_DIRS):
+                candidates.append(filepath)
+
+    for filepath in candidates:
+        content = read_file(filepath)
+        if not content:
+            continue
+
+        rel_path = str(filepath.relative_to(repo_root))
+
+        # Check if APPD retrieval already exists
+        if "APPD_SECRET_NICKNAME" in content and "download_eth_secret" in content:
+            changes.append(Change(
+                file=rel_path,
+                line=0,
+                change_type="ENTRYPOINT_APPD_ALREADY_EXISTS",
+                before="(already has APPD retrieval)",
+                after="(no change needed)",
+            ))
+            continue
+
+        # Find insertion point — before existing download_eth_secret calls
+        # or before the main application start command
+        lines = content.split("\n")
+        insert_at = -1
+
+        for i, line in enumerate(lines):
+            # Insert before first download_eth_secret call (if any)
+            if "download_eth_secret" in line and "APPD" not in line:
+                insert_at = i
+                break
+
+        if insert_at == -1:
+            # No existing download_eth_secret — insert before last line or exec/java command
+            for i, line in enumerate(lines):
+                if re.search(r'(exec|java\s+-)', line):
+                    insert_at = i
+                    break
+
+        if insert_at == -1:
+            insert_at = len(lines) - 1
+
+        # Insert the block
+        lines.insert(insert_at, APPD_RETRIEVAL_BLOCK.strip())
+        new_content = "\n".join(lines)
+
+        changes.append(Change(
+            file=rel_path,
+            line=insert_at + 1,
+            change_type="ENTRYPOINT_APPD_ADDED",
+            before="(no APPD NGC retrieval)",
+            after="Added download_eth_secret + export block",
+        ))
+
+        if not dry_run:
+            write_file(filepath, new_content)
+
+    return changes
+
+
+# ============================================================================
+# REPORTING
+# ============================================================================
+
+def print_report(changes: List[Change], dry_run: bool):
+    mode = "DRY RUN (no files modified)" if dry_run else "APPLIED"
+
+    print(f"\n{'=' * 70}")
+    print(f"REMEDIATION REPORT — {mode}")
+    print(f"{'=' * 70}")
+    print(f"\nTotal changes: {len(changes)}")
+
+    if not changes:
+        print("\nNo changes needed — repo appears already remediated.")
+        return
+
+    # Group by type
+    by_type = {}
+    for c in changes:
+        by_type.setdefault(c.change_type, []).append(c)
+
+    for change_type, items in by_type.items():
+        print(f"\n{'-' * 70}")
+        print(f"[{change_type}] — {len(items)} change(s)")
+        print(f"{'-' * 70}")
+        for c in items:
+            print(f"  File: {c.file}:{c.line}")
+            print(f"    Before: {c.before}")
+            print(f"    After:  {c.after}")
+            print()
+
+    # Summary of files modified
+    modified_files = sorted(set(c.file for c in changes))
+    print(f"\n{'=' * 70}")
+    print(f"Files {'that would be' if dry_run else ''} modified: {len(modified_files)}")
+    for f in modified_files:
+        print(f"  {f}")
+    print(f"{'=' * 70}")
+
+
+def export_csv(changes: List[Change], output_path: str):
+    with open(output_path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["File", "Line", "Change Type", "Before", "After"])
+        for c in changes:
+            writer.writerow([c.file, c.line, c.change_type, c.before, c.after])
+    print(f"\nCSV report: {output_path}")
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Auto-remediate APPD key exposure per Citi NGC pattern"
+    )
+    parser.add_argument(
+        "repo_path",
+        nargs="?",
+        default=".",
+        help="Path to the local Git repository (defaults to current directory)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview changes without modifying files"
+    )
+
+    args = parser.parse_args()
+    repo_path = os.path.abspath(args.repo_path)
+    repo_name = os.path.basename(repo_path)
+    repo_root = Path(repo_path)
+
+    if not repo_root.is_dir():
+        print(f"ERROR: {repo_path} is not a valid directory")
+        sys.exit(1)
+
+    mode = "DRY RUN" if args.dry_run else "LIVE"
+    print(f"\nAppDynamics Remediation [{mode}] — {repo_root}")
+
+    # Run all remediations
+    all_changes = []
+    all_changes.extend(remediate_hardcoded_uuids(repo_root, args.dry_run))
+    all_changes.extend(remediate_renames(repo_root, args.dry_run))
+    all_changes.extend(remediate_deployment(repo_root, args.dry_run))
+    all_changes.extend(remediate_entrypoint(repo_root, args.dry_run))
+
+    # Report
+    print_report(all_changes, args.dry_run)
+
+    # Export CSV
+    output_file = f"remediation_report_{repo_name}.csv"
+    export_csv(all_changes, output_file)
+
+    if args.dry_run and all_changes:
+        print(f"\n>>> Run without --dry-run to apply these changes.")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
