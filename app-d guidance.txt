@@ -1,0 +1,34 @@
+Hi All,
+
+I understand there is some confusion around accessing and onboarding applications to AppDynamics (APPD). Please find the guidance below.
+
+1. How to get access to the AppDynamics portal?
+
+Currently, there are two AppDynamics controllers available:
+
+DEV & UAT
+PROD & COB
+
+2. AD Groups required for AppDynamics access
+
+Please ensure that your SOE ID is added to all four AD groups listed below to get the required AppDynamics access.
+
+[Add the four AD group names here]
+
+Please do not get confused by AD Groups 3 and 4. 166944-CitiRisk was the first application onboarded to AppDynamics, and the corresponding AD group was created as part of that onboarding. Subsequently, the additional groups were created for AppDynamics access.
+
+Therefore, for your individual access, your SOE ID needs to be part of all four AD groups.
+
+3. AppDynamics Secret Key
+
+The secret key needs to be created in NGC following the Checkmarx guidelines. Once created, please refer to the nickname in the deployment configuration / dev-values.yaml.
+
+4. DEV Controller / Application Onboarding
+
+At this point, I have been informed that there is no separate DEV controller available. Therefore, AppDynamics onboarding is not mandatory for the DEV environment.
+
+If the application team specifically requires AppDynamics monitoring in DEV, we can take this up separately.
+
+However, AppDynamics onboarding is mandatory for the higher environments.
+
+Please follow the above guidance for AppDynamics access and onboarding.
