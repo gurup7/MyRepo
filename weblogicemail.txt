@@ -1,0 +1,33 @@
+ollowing our earlier discussion where you confirmed that iTicket uses EJB 2.x, we ran the IBM Application Migration Analyzer (AMA) tool against edtapp.ear to get a detailed inventory before finalizing the Liberty migration approach.
+
+The AMA scan has flagged a discrepancy that I'd like to clarify with you.
+
+What AMA Found
+Component	Count (AMA)
+CMP Entity Beans	0
+BMP Entity Beans	0
+Message Driven Beans	14
+Stateless Session Beans	4
+Stateful Session Beans	0
+Singleton Session Beans	0
+Spring Beans	262
+AMA detected zero CMP and zero BMP Entity Beans in the EAR. This is significant because Entity Beans are the specific EJB component type that Liberty does NOT support — and our migration plan currently accounts for a full Entity Bean → JPA rewrite as the critical path item.
+
+What I Need to Clarify
+When you mentioned "EJB 2.x", could you confirm which of the following applies:
+
+The EJB deployment descriptors / spec version is 2.x (e.g., ejb-jar.xml uses the 2.1 DTD/schema) — but the actual bean types are Session Beans and MDBs only (no Entity Beans)?
+
+There are actual CMP/BMP Entity Beans in use — meaning AMA may have missed them (perhaps they're in a separate module, or loaded via a different mechanism)?
+
+Entity Beans existed historically but were already migrated to Hibernate/JPA — and the "EJB 2.x" reference was about the overall EJB spec level the application was built against?
+
+Why This Matters
+If scenario (1) or (3) is correct: The Liberty migration path becomes significantly simpler. We'd focus on the 14 MDB reconfigurations + Hibernate upgrade + namespace changes — removing 6-10 sprints of Entity Bean rewrite from the timeline.
+If scenario (2) is correct: We need to investigate why AMA didn't detect them, and the full JPA rewrite remains on the critical path.
+What Would Help
+If you could point us to any of the following, it would help us close this out quickly:
+
+Any ejb-jar.xml files that define Entity Beans (look for <entity> elements vs <session> or <message-driven>)
+Any abstract classes implementing javax.ejb.EntityBean
+Any deployment descriptors with <persistence-type>Container</persistence-type> or <persistence-type>Bean</persistence-type>
