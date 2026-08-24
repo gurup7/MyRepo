@@ -1,0 +1,11 @@
+Users (267 bankers, operations, SDC) access iTicket through a browser-based Angular 21 single-page application over secure HTTPS connections.
+Requests pass through the Apigee API Gateway and PSG security gateway for authentication, rate limiting, and policy enforcement.
+The OpenShift Route/Ingress terminates TLS and routes traffic to the appropriate deployable unit based on the request path.
+Static frontend assets (Angular dist) are served by the Apache HTTP Server, which provides SSO support.
+The Angular frontend invokes REST APIs exposed by the IBM WebSphere Liberty backend (Spring MVC / JAX-RS controllers).
+The Liberty backend executes core deal-ticket business logic through Spring 7.x beans and EJB Session Beans, applying compliance and validation rules.
+Persistence is handled by Hibernate 7.x (JPA), reading and writing to the Oracle 19c database via a JDBC connection pool.
+Asynchronous integration with external systems (IPO, GTM, FXD, CRS, TPS, EMS, and others) flows through IBM MQ, consumed and produced by 14 message listeners.
+Batch processing runs as Argo Workflows / OpenShift Jobs, handling feed checks, data uploads, report generation, and business date rollover.
+Batch jobs exchange files with the on-premise NDM system via an SFTP bridge, while NDM itself remains on the VM.
+Cross-cutting platform services provide secrets management (HashiCorp Vault, CyberArk), centralized logging (Kibana), application monitoring (AppDynamics), and externalized configuration (ConfigMaps)
