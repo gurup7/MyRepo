@@ -1,0 +1,411 @@
+<mxfile host="app.diagrams.net" modified="2026-08-18T10:00:00.000Z" agent="Kiro" version="21.0.0" type="device">
+  <diagram id="physical-deploy" name="Target Physical Deployment">
+    <mxGraphModel dx="1900" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1300" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="&lt;b&gt;iTicket (eDealTicket) — Target Physical Deployment Architecture&lt;/b&gt;&lt;br&gt;OpenShift Container Platform + IBM WebSphere Liberty" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="400" y="15" width="600" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Client Tier -->
+        <mxCell id="client-tier" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="250" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="client-label" value="&lt;b&gt;A. Client Tier&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=top;fontSize=12;fontColor=#B36B00;" vertex="1" parent="1">
+          <mxGeometry x="100" y="85" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="ws1" value="Workstation" style="shape=mxgraph.computers.laptop;fillColor=#FFD700;strokeColor=#D4A017;" vertex="1" parent="1">
+          <mxGeometry x="60" y="115" width="50" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ws2" value="Workstation" style="shape=mxgraph.computers.laptop;fillColor=#FFD700;strokeColor=#D4A017;" vertex="1" parent="1">
+          <mxGeometry x="130" y="115" width="50" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ws3" value="Workstation" style="shape=mxgraph.computers.laptop;fillColor=#FFD700;strokeColor=#D4A017;" vertex="1" parent="1">
+          <mxGeometry x="200" y="115" width="50" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="client-desc" value="267 Users&lt;br&gt;(Bankers, Operations, SDC)&lt;br&gt;Angular 21 SPA in browser&lt;br&gt;HTTPS only" style="text;html=1;align=center;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="60" y="165" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="protocol-1" value="HTTPS" style="text;html=1;align=center;fontSize=9;fontColor=#CC0000;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="295" y="145" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- Apigee / API Gateway -->
+        <mxCell id="apigee-tier" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#4CAF50;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="350" y="80" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="apigee-label" value="&lt;b&gt;B. API Gateway Tier&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=top;fontSize=12;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="370" y="85" width="160" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="apigee-box" value="&lt;b&gt;Apigee&lt;/b&gt;&lt;br&gt;API Gateway" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#4CAF50;" vertex="1" parent="1">
+          <mxGeometry x="380" y="115" width="140" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="psg-box" value="&lt;b&gt;PSG&lt;/b&gt;&lt;br&gt;Security Gateway" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#4CAF50;" vertex="1" parent="1">
+          <mxGeometry x="380" y="170" width="140" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="apigee-desc" value="Rate limiting, Auth,&lt;br&gt;API proxy routing" style="text;html=1;align=center;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="380" y="220" width="140" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="protocol-2" value="HTTPS" style="text;html=1;align=center;fontSize=9;fontColor=#CC0000;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="555" y="145" width="50" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- OpenShift Platform -->
+        <mxCell id="ocp-platform" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F2FF;strokeColor=#1565C0;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="620" y="70" width="820" height="830" as="geometry" />
+        </mxCell>
+        <mxCell id="ocp-label" value="&lt;b&gt;C. OpenShift Container Platform (ECS)&lt;/b&gt;&lt;br&gt;Namespace: edt-production" style="text;html=1;align=left;verticalAlign=top;fontSize=13;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="640" y="75" width="350" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- OpenShift Ingress / Route -->
+        <mxCell id="ingress" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="650" y="120" width="770" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ingress-label" value="&lt;b&gt;OpenShift Route / Ingress Controller&lt;/b&gt; (replaces OHS + Load Balancer)" style="text;html=1;align=center;fontSize=11;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="790" y="125" width="420" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="ingress-detail" value="TLS Termination | Path-based routing | /cloudapp → Liberty | / → NGINX (Angular)" style="text;html=1;align=center;fontSize=9;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="790" y="148" width="420" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="vip" value="&lt;b&gt;VIP&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1976D2;strokeColor=#0D47A1;fontColor=#FFFFFF;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="670" y="135" width="50" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Frontend Deployment -->
+        <mxCell id="frontend-deploy" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="650" y="210" width="300" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="frontend-deploy-label" value="&lt;b&gt;DU-2 · Deployment: edt-frontend&lt;/b&gt;&lt;br&gt;Replicas: 2 | Image: edt-angular:21 (Apache HTTP)" style="text;html=1;align=center;verticalAlign=top;fontSize=10;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="670" y="215" width="260" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="fe-pod1" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;" vertex="1" parent="1">
+          <mxGeometry x="670" y="250" width="125" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="fe-pod1-label" value="&lt;b&gt;Pod 1&lt;/b&gt;" style="text;html=1;align=center;fontSize=9;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="695" y="253" width="60" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="nginx1" value="&lt;b&gt;Apache HTTP&lt;/b&gt;&lt;br&gt;(SSO + Static)&lt;br&gt;Angular 21 dist" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#66BB6A;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="680" y="273" width="105" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="fe-resources1" value="CPU: 200m | Mem: 256Mi" style="text;html=1;align=center;fontSize=8;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="680" y="335" width="105" height="15" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fe-pod2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;" vertex="1" parent="1">
+          <mxGeometry x="810" y="250" width="125" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="fe-pod2-label" value="&lt;b&gt;Pod 2&lt;/b&gt;" style="text;html=1;align=center;fontSize=9;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="835" y="253" width="60" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="nginx2" value="&lt;b&gt;Apache HTTP&lt;/b&gt;&lt;br&gt;(SSO + Static)&lt;br&gt;Angular 21 dist" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#66BB6A;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="820" y="273" width="105" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="fe-resources2" value="CPU: 200m | Mem: 256Mi" style="text;html=1;align=center;fontSize=8;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="820" y="335" width="105" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- Liberty Backend Deployment -->
+        <mxCell id="liberty-deploy" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1565C0;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="970" y="210" width="450" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="liberty-deploy-label" value="&lt;b&gt;DU-1 · Deployment: edt-liberty&lt;/b&gt;&lt;br&gt;Replicas: 2 | Image: edt-liberty:latest | Java 21 (WAR + core + 14 MDBs)" style="text;html=1;align=center;verticalAlign=top;fontSize=10;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="215" width="370" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Liberty Pod 1 -->
+        <mxCell id="lib-pod1" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="990" y="250" width="200" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="lib-pod1-label" value="&lt;b&gt;Pod 1 (Node 1 — AZ-1)&lt;/b&gt;" style="text;html=1;align=center;fontSize=9;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="253" width="150" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="liberty1" value="&lt;b&gt;IBM WebSphere Liberty&lt;/b&gt;&lt;br&gt;Jakarta EE 10&lt;br&gt;(server.xml)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="272" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="spring1" value="Spring 7.x + Hibernate 7.x&lt;br&gt;262 Spring Beans | 56 HBM mappings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="318" width="180" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ejb1" value="EJB Session Beans (4)&lt;br&gt;@JmsListener (14 MDBs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="358" width="180" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="rest1" value="REST API (JAX-RS)&lt;br&gt;Spring MVC Controllers (36)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="398" width="180" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="lib1-resources" value="CPU: 2000m | Mem: 4Gi | JVM: -Xmx3g" style="text;html=1;align=center;fontSize=8;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="438" width="180" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="lib1-probes" value="Readiness: /health/ready | Liveness: /health/live" style="text;html=1;align=center;fontSize=7;fontColor=#AAAAAA;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="455" width="180" height="12" as="geometry" />
+        </mxCell>
+
+        <!-- Liberty Pod 2 -->
+        <mxCell id="lib-pod2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="1205" y="250" width="200" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="lib-pod2-label" value="&lt;b&gt;Pod 2 (Node 2 — AZ-2)&lt;/b&gt;" style="text;html=1;align=center;fontSize=9;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="1225" y="253" width="150" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="liberty2" value="&lt;b&gt;IBM WebSphere Liberty&lt;/b&gt;&lt;br&gt;Jakarta EE 10&lt;br&gt;(server.xml)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="272" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="spring2" value="Spring 7.x + Hibernate 7.x&lt;br&gt;262 Spring Beans | 56 HBM mappings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="318" width="180" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ejb2" value="EJB Session Beans (4)&lt;br&gt;@JmsListener (14 MDBs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="358" width="180" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="rest2" value="REST API (JAX-RS)&lt;br&gt;Spring MVC Controllers (36)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="398" width="180" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="lib2-resources" value="CPU: 2000m | Mem: 4Gi | JVM: -Xmx3g" style="text;html=1;align=center;fontSize=8;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="438" width="180" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="lib2-probes" value="Readiness: /health/ready | Liveness: /health/live" style="text;html=1;align=center;fontSize=7;fontColor=#AAAAAA;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="455" width="180" height="12" as="geometry" />
+        </mxCell>
+
+        <!-- Service mesh between pods -->
+        <mxCell id="svc-liberty" value="&lt;b&gt;Service: edt-liberty-svc&lt;/b&gt; (ClusterIP :8080 / :9443)" style="text;html=1;align=center;fontSize=9;fontColor=#1565C0;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="475" width="280" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- IBM MQ -->
+        <mxCell id="mq-deploy" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#C62828;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="650" y="520" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="mq-label" value="&lt;b&gt;IBM MQ (JMS Provider)&lt;/b&gt;&lt;br&gt;Deployment or External Service" style="text;html=1;align=center;verticalAlign=top;fontSize=10;fontColor=#B71C1C;" vertex="1" parent="1">
+          <mxGeometry x="680" y="525" width="240" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="mq-queues" value="&lt;b&gt;14 Queues:&lt;/b&gt;&lt;br&gt;EDT.DEPOSIT.IN | EDT.CACHE.REFRESH&lt;br&gt;EDT.EMS.IN | EDT.TPS.IN | EDT.IPO.IN&lt;br&gt;EDT.FXD.IN | EDT.GTM.IN | EDT.CRS.IN&lt;br&gt;EDT.ERMS.IN | EDT.SHCQO.IN | ..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C62828;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="665" y="558" width="270" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Batch Jobs -->
+        <mxCell id="batch-deploy" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE7F6;strokeColor=#5E35B1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="970" y="520" width="450" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-deploy-label" value="&lt;b&gt;DU-3 · edt-batch — Argo Workflows / OpenShift Jobs (replaces Autosys)&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=top;fontSize=10;fontColor=#4527A0;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="525" width="400" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-job1" value="Feed Check&lt;br&gt;Jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E57C2;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="990" y="555" width="80" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-job2" value="Data Upload&lt;br&gt;Jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E57C2;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="555" width="80" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-job3" value="Report&lt;br&gt;Gen Jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E57C2;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="555" width="80" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-job4" value="DMS/PMF&lt;br&gt;Batch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E57C2;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="555" width="80" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-job5" value="Date&lt;br&gt;Rollover" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E57C2;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="555" width="60" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-image" value="Image: edt-batch:latest (ksh + sqlplus + SFTP client)" style="text;html=1;align=center;fontSize=8;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="600" width="350" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="batch-scheduler" value="Scheduler: Argo CronWorkflow (calendar-aware, dependency DAGs)" style="text;html=1;align=center;fontSize=8;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="618" width="350" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- Shared Services Row -->
+        <mxCell id="shared-row" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#AB47BC;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="650" y="660" width="770" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="shared-label" value="&lt;b&gt;Shared Platform Services&lt;/b&gt;" style="text;html=1;align=left;fontSize=9;fontColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="660" y="663" width="150" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="vault-svc" value="&lt;b&gt;HashiCorp&lt;br&gt;Vault&lt;/b&gt;&lt;br&gt;(Secrets)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="665" y="682" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="cyberark-svc" value="&lt;b&gt;CyberArk&lt;/b&gt;&lt;br&gt;(DB FIDs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="760" y="682" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="appd-svc" value="&lt;b&gt;AppDynamics&lt;/b&gt;&lt;br&gt;(APM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="855" y="682" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="kibana-svc" value="&lt;b&gt;EFK Stack&lt;/b&gt;&lt;br&gt;(Kibana Logs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="950" y="682" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="configmap-svc" value="&lt;b&gt;ConfigMaps&lt;/b&gt;&lt;br&gt;(Env config)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1045" y="682" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="pvc-svc" value="&lt;b&gt;PVC&lt;/b&gt;&lt;br&gt;(Feed files)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="682" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="cicd-svc" value="&lt;b&gt;LSE Pipeline&lt;/b&gt;&lt;br&gt;(CI/CD)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1235" y="682" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="helm-svc" value="&lt;b&gt;Helm&lt;/b&gt;&lt;br&gt;Charts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AB47BC;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="682" width="70" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- OpenShift platform boundary end -->
+        <mxCell id="ocp-boundary-label" value="&lt;i&gt;OpenShift Platform Boundary&lt;/i&gt;" style="text;html=1;align=right;fontSize=9;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="870" width="170" height="15" as="geometry" />
+        </mxCell>
+
+        <!-- COB / HA Info -->
+        <mxCell id="ha-info" value="&lt;b&gt;HA/COB:&lt;/b&gt; Multi-AZ pod anti-affinity&lt;br&gt;Auto-scaling: HPA (2-4 replicas based on CPU)" style="text;html=1;align=center;fontSize=9;fontColor=#1565C0;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="650" y="400" width="270" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Database Tier (External) -->
+        <mxCell id="db-tier" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="520" width="250" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="db-tier-label" value="&lt;b&gt;D. Database Tier&lt;/b&gt;&lt;br&gt;(External — not on OpenShift)" style="text;html=1;align=center;verticalAlign=top;fontSize=11;fontColor=#BF360C;" vertex="1" parent="1">
+          <mxGeometry x="65" y="525" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="oracle1" value="&lt;b&gt;Oracle 19c&lt;/b&gt;&lt;br&gt;Server 1 (Primary)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FFE0B2;strokeColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="60" y="565" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="oracle2" value="&lt;b&gt;Oracle 19c&lt;/b&gt;&lt;br&gt;Server 2 (Standby)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FFE0B2;strokeColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="175" y="565" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="db-detail" value="JDBC via Liberty connection pool&lt;br&gt;ojdbc8 19.9.0.0 | DB Links intact" style="text;html=1;align=center;fontSize=8;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="635" width="200" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- NDM VM Tier -->
+        <mxCell id="ndm-vm-tier" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#546E7A;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="710" width="250" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="ndm-vm-label" value="&lt;b&gt;E. NDM Tier (VM — unchanged)&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=top;fontSize=11;fontColor=#37474F;" vertex="1" parent="1">
+          <mxGeometry x="65" y="715" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="ndm-vm" value="&lt;b&gt;NDM Agent&lt;/b&gt;&lt;br&gt;Windows Server / Linux VM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#546E7A;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="65" y="745" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="sftp-bridge" value="&lt;b&gt;SFTP&lt;/b&gt;&lt;br&gt;(Bridge from OCP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#546E7A;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="65" y="795" width="130" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ndm-pattern" value="Pattern: Pod → SFTP → VM → NDM" style="text;html=1;align=center;fontSize=8;fontColor=#888888;" vertex="1" parent="1">
+          <mxGeometry x="60" y="832" width="200" height="12" as="geometry" />
+        </mxCell>
+
+        <!-- External downstream systems -->
+        <mxCell id="downstream-tier" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#F9A825;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="870" width="550" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="downstream-label" value="&lt;b&gt;F. External Systems (JMS / Web Services / DB Link)&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=top;fontSize=10;fontColor=#F57F17;" vertex="1" parent="1">
+          <mxGeometry x="100" y="873" width="350" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-eblotter" value="eBlotter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="900" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-tps2" value="TPS2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="125" y="900" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-edealer" value="eDealer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="195" y="900" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-rsfs" value="RSFS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="265" y="900" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-rcp" value="RCP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="335" y="900" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-bot" value="BOT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="930" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-gps" value="GPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="125" y="930" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-dms" value="DMS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="195" y="930" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-eoasis" value="eOasis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="265" y="930" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-impacs" value="IMPACS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="335" y="930" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-sdp" value="SDP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="405" y="900" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-als" value="ALS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="475" y="900" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-systematics" value="Systematics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="405" y="930" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds-p1" value="P1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="475" y="930" width="60" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Connection Arrows -->
+        <mxCell id="arr-client-apigee" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="client-tier" target="apigee-tier" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-apigee-ocp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="apigee-tier" target="ingress" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-liberty-db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#E65100;strokeWidth=2;dashed=1;" edge="1" source="liberty-deploy" target="db-tier" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="610" y="400" />
+              <mxPoint x="610" y="600" />
+              <mxPoint x="165" y="600" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arr-batch-ndm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#546E7A;strokeWidth=1;dashed=1;" edge="1" source="batch-deploy" target="ndm-vm-tier" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="600" y="580" />
+              <mxPoint x="600" y="775" />
+              <mxPoint x="165" y="775" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arr-mq-downstream" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#C62828;strokeWidth=1;dashed=1;" edge="1" source="mq-deploy" target="downstream-tier" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="500" y="700" />
+              <mxPoint x="500" y="915" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#CCCCCC;" vertex="1" parent="1">
+          <mxGeometry x="40" y="310" width="250" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;Legend — Current → Target Mapping&lt;/b&gt;" style="text;html=1;align=center;fontSize=9;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="55" y="315" width="220" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="OHS Web Server → &lt;b&gt;OpenShift Route&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="335" width="200" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="Load Balancer → &lt;b&gt;VIP + Ingress&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="353" width="200" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="WebLogic 14 → &lt;b&gt;IBM Liberty (Jakarta EE 10)&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="371" width="220" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="NGINX (on VM) → &lt;b&gt;Apache HTTP (container, SSO)&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="389" width="220" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5" value="WebLogic JMS → &lt;b&gt;IBM MQ&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="407" width="200" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg6" value="Autosys (500 jobs) → &lt;b&gt;Argo Workflows&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="425" width="200" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg7" value="Server Start/Stop (22 jobs) → &lt;b&gt;ELIMINATED&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="443" width="200" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg8" value="NDM on VM → &lt;b&gt;NDM on VM (SFTP bridge)&lt;/b&gt;" style="text;html=1;align=left;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="461" width="220" height="15" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
