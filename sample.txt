@@ -1,0 +1,11 @@
+The architecture spans two datacenters in an active/COB configuration — FDC hosts the active ECS OpenShift cluster (namespace edt-prod) and RDC hosts the standby cluster (namespace edt-cob) — with traffic entering through the Internet and GRN network zones via CDN/WAF, and Oracle 19c RAC kept in sync between sites through Data Guard replication.
+
+User and channel traffic (267 users on the Angular 21 SPA, plus REST API consumers via Apigee) flows over HTTPS through the PSG namespace (NGINX + PSG security gateway) into the OpenShift Route/Ingress, which performs VIP-based TLS termination before routing to the deployable units.
+
+Three deployable units run in each cluster: DU-2 edt-frontend (Angular 21 on Apache HTTP with SSO, 2 replicas), DU-1 edt-liberty (Spring 7.x + Hibernate 7.x + 4 Session Beans + 14 @JmsListener on IBM WebSphere Liberty, 2 pods scaling to 4 via HPA), and DU-3 edt-batch (Argo Workflows/OpenShift Jobs running as ephemeral pods).
+
+Asynchronous integration is handled by IBM MQ (14 queues, replacing WebLogic JMS) connecting to external systems such as eBlotter, TPS2, IPO, GTM, FXD, CRS, ERMS, and SHC/QO, while synchronous web services reach GPS, DMS, eOasis, SDP, and ALS.
+
+Batch processing replaces the legacy Autosys estate (~500 jobs, with ~22 server start/stop jobs eliminated since OpenShift manages container lifecycle), and interfaces with the on-premise NDM system — which remains unchanged on a VM — through an SFTP bridge (Pod → SFTP → VM → NDM).
+
+Shared platform services (HashiCorp Vault, CyberArk for DB FIDs, AppDynamics, Kibana for ECS logs, ConfigMaps, and PVCs) support both clusters, with deployable units promoted through the CI/CD pipeline (LSE → Helm → OpenShift) across DEV → UAT → COB → PROD, and resilience provided by pod anti-affinity across nodes/AZs, readiness/liveness probes, and HPA auto-scaling
