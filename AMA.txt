@@ -1,0 +1,19 @@
+"This slide shows the IBM AMA scan output — AMA reads the deployed EAR binary directly, so these numbers are facts, not estimates. The most important row is the Entity Beans: zero CMP, zero BMP, zero JPA entities. This is what closed out the earlier concern that 'EJB 2.0' meant Entity Beans and a mandatory JPA rewrite. It does not — the 2.0 refers to the spec version of the descriptors, and the scan proves no Entity Beans exist. That single finding removed an estimated 6-10 sprints of rewrite effort from the program.
+
+What the app actually contains is 4 Stateless Session Beans and 14 Message-Driven Beans. The Session Beans require only a javax.ejb → jakarta.ejb namespace change to run on Liberty. The 14 MDBs are the heart of the integration layer — they move to Spring @JmsListener backed by IBM MQ. There are 262 Spring beans, which tells us the business logic is already Spring-managed, so it's close to a modern Spring Boot model.
+
+A word of caution on the numbers: the 293 Web Services count looks alarming but is misleading — around 266 of those are WebLogic's own internal JAX-RPC implementations bundled in wlfullclient.jar, not our code. Real application web services are only about six, which do need migrating off deprecated JAX-RPC. Similarly, the 16 JSPs and 9 Servlets are still active and need the Jakarta namespace update."
+
+Option C: Ready-to-Paste Table with Migration Impact Column
+Technology	Count	Migration Impact
+Java Servlets	9	javax.servlet → jakarta.servlet namespace change
+JSP files	16	Still active; Jakarta namespace update needed
+JPA entities	0	No annotated entities — persistence is Hibernate HBM-based
+BMP entity beans	0	✅ No Entity Bean rewrite required
+CMP entity beans	0	✅ No Entity Bean rewrite required
+Message-driven beans	14	Migrate to Spring @JmsListener + IBM MQ
+Singleton session beans	0	N/A
+Stateful session beans	0	N/A
+Stateless session beans	4	Namespace change only (jakarta.ejb)
+Web Services	293	~266 are WebLogic-internal (wlfullclient); only ~6 are real app services
+Spring beans	262	Primary business logic container — Spring-centric app
