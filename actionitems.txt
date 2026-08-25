@@ -1,0 +1,53 @@
+Client Tier Architecture Clarification 
+
+    Confirm whether the workstation/client tier is browser-based or a thick client application
+    Clarify what exactly is being deployed on client workstations
+
+ 
+
+Ping Access Agent Location 
+
+    Validate whether the Ping Access agent is running on Apache OHS or NGINX
+    Confirm the exact infrastructure where this agent is deployed
+
+ 
+
+Infrastructure Details 
+
+    Verify if the system is running on virtual machines or physical machines
+    Confirm the CPU specifications (noted as six CPUs)
+
+ 
+
+Integration Protocols and Security 
+
+    Clarify the exact protocols used for incoming calls from applications like DMS (confirm if it's HTTPS)
+    Obtain detailed information about certificate requirements and firewall requirements
+
+ 
+
+MQ Integration Approach 
+
+    Determine the strategy for IBM MQ (MQ 14) integration
+    Decide whether to use external MQ or centralized MQ infrastructure
+    Clarify how MDBs (Message-Driven Beans) will be handled in the transition
+
+ 
+
+Network Routing and Entry Points 
+
+    Clarify how internal users and internal applications will access the system
+    Confirm whether all traffic goes through PSG or if there are multiple entry points
+    Determine if there should be separate PSG instances for internal and external traffic
+
+ 
+
+Business Process Documentation 
+
+    Request current state diagrams and business process flows from the application team
+
+ 
+
+Upstream and Downstream Interface Details 
+
+    Obtain the complete list of upstream and downstream interface specifications in a consolidated format (the team mentioned these were captured in a table format from an inside document)
