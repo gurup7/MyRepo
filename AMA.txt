@@ -1,3 +1,10 @@
+
+The IBM Application Migration Assessment (AMA) scanned the actual edtapp.ear binary and produced a factual component inventory — this replaces assumptions with evidence.
+Zero Entity Beans confirmed (0 CMP, 0 BMP, 0 JPA entities) — this is the headline finding: it removes the feared EJB 2.x → JPA rewrite entirely.
+The EJB layer is 4 Stateless Session Beans + 14 Message-Driven Beans — Session Beans need only a namespace change; MDBs move to IBM MQ.
+262 Spring beans confirm the application is Spring-centric, so business logic modernization is straightforward.
+The 293 "Web Services" figure is misleading — the vast majority are WebLogic's internal libraries (wlfullclient), not application code; only ~6 are real application services.
+
 "This slide shows the IBM AMA scan output — AMA reads the deployed EAR binary directly, so these numbers are facts, not estimates. The most important row is the Entity Beans: zero CMP, zero BMP, zero JPA entities. This is what closed out the earlier concern that 'EJB 2.0' meant Entity Beans and a mandatory JPA rewrite. It does not — the 2.0 refers to the spec version of the descriptors, and the scan proves no Entity Beans exist. That single finding removed an estimated 6-10 sprints of rewrite effort from the program.
 
 What the app actually contains is 4 Stateless Session Beans and 14 Message-Driven Beans. The Session Beans require only a javax.ejb → jakarta.ejb namespace change to run on Liberty. The 14 MDBs are the heart of the integration layer — they move to Spring @JmsListener backed by IBM MQ. There are 262 Spring beans, which tells us the business logic is already Spring-managed, so it's close to a modern Spring Boot model.
