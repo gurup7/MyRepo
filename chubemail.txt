@@ -1,0 +1,16 @@
+Following up on yesterday’s discussion and the action items captured in the MoM, I wanted to highlight a few delivery risks and technical dependencies for the Customer Hub application.
+
+At this point, there are some areas that need further validation and could potentially impact the planned delivery timeline:
+
+JDBC Template / Application Configuration Changes
+As discussed, the application will require changes in the DAO layer to replace the existing BaseJdbcTemplate implementation with Spring Boot's JdbcTemplate, along with the associated configuration changes. The impact of these changes needs to be assessed across the application before we can confidently estimate the effort.
+Multi-Database Connectivity – Technical Validation
+The application requires connectivity to multiple databases. The APAC database details are yet to be validated, and we need to confirm the multi-database connectivity approach as part of the Spring Boot implementation. This remains a technical dependency and may introduce additional development/configuration effort depending on the outcome of the validation.
+POC Requirement
+As discussed yesterday, the team is also expected to work on a POC for the proposed multi-database connectivity approach. The POC outcome will be important in validating the technical approach, but it also needs to be factored into the delivery plan and timeline.
+New CMP / DB FID Dependency
+A new CMP needs to be raised for the DB FID. Based on the current understanding, this requires at least 5 days for provisioning. This is an external dependency and could directly impact the schedule if the FID is required for development/testing activities.
+Test Data / AE-related Dependency
+SQL queries and required test payloads also need to be made available to establish the baseline, including the AE-related changes and replacement of the existing PL with AE. This is another dependency that needs to be considered in the overall timeline.
+
+Given the above, I would recommend that we validate the multi-database connectivity through the POC and close the required DB/FID dependencies before finalizing the delivery commitment. The combination of application-level changes, database integration uncertainty, POC effort, and the 5-day CMP lead time presents a potential delivery risk
