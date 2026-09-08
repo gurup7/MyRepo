@@ -1,0 +1,12 @@
+With Angular 19 already deployed and tested in SIT, the upgrade to Angular 21 is a low-to-medium risk, two-hop incremental path (19→20→21). The historically complex migrations — standalone components, signals, new control flow, and the esbuild builder — are already adopted at version 19, so no architectural rewrite is required. The remaining effort is primarily running Angular's automated update per hop, resolving deprecations, and updating third-party libraries. The critical gating activity is the pending regression testing rather than the code change itself. Since Angular 19 was never promoted to Production, the first Production deployment will be Angular 21.
+
+Steps Involved in the Upgrade
+Step	Activity
+1	Assess — confirm Node/TypeScript versions; inventory third-party Angular libraries for v20/v21 compatibility; baseline the green SIT 19 build
+2	Upgrade 19 → 20 — run ng update @angular/core@20 @angular/cli@20; apply migration schematics
+3	Fix & build (20) — resolve deprecations, update third-party libs, npm run build, run unit tests
+4	Upgrade 20 → 21 — run ng update @angular/core@21 @angular/cli@21; apply schematics
+5	Fix & build (21) — resolve deprecations, update third-party libs, build, run unit tests
+6	Regression testing — complete the pending regression across all iTicket modules (the key gating step)
+7	Validate — SSO/auth flow, cross-browser, bundle-size/performance, UAT sign-off
+8	Deploy — containerize (Apache HTTP), promote DEV → UAT → COB → PROD (first-ever Prod deployment is Angular 21)
