@@ -1,0 +1,20 @@
+Orion requests and DA access, including expansion of OpenShift cluster details
+API Governance Portal – EEMS2 onboarding
+API Governance Portal CMP activities for SRT number
+NG CORTOSIS activities for APDD
+CodeBot / Code Transformer activities for application code transformation
+JUnit, Snyk and code coverage activities
+CMP: SID DB access and additional OpenShift cluster access
+APDD configuration for 5 AD groups
+Snyk security scanning and remediation
+Sonar analysis and quality-gate validation
+Java version upgrade using Code Transformer / Renovate / CodeBot
+Spring framework upgrade
+Application containerization and related code/configuration changes
+Helm structure and deployment template creation/customization
+Embedded Tomcat template upgrades (v1/v2)
+APDD configuration and POC activities
+Sonar quality-gate status checks
+Application-specific troubleshooting, remediation and re-validation
+Additional regression testing following Java, Spring, Tomcat and configuration changes
+Coordination with Application, Platform, Security and Governance teams for the above activities
