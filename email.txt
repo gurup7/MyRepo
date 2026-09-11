@@ -1,0 +1,6 @@
+Who is the owner of this app management in production?
+When the application/script fails, how is the failure detected today?
+Does the application return a non-zero exit code when processing fails?
+Does the application retry internally, or does AutoSys retry the job? How many times?
+Who gets notified when the job ultimately fails?
+Is the notification through email, Teams, Slack, ServiceNow
