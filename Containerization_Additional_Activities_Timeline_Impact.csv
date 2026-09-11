@@ -1,0 +1,13 @@
+Additional Activities,Impact on Timeline
+OpenShift/DA access & cluster configuration,Platform dependency and additional provisioning/coordination time
+API Governance Portal – EEMS2 & CMP/SRT activities,Additional governance onboarding and validation cycles
+NG CORTOSIS / APDD security activities,Additional compliance checks and dependency on security/platform teams
+SID DB & OpenShift cluster access,Additional access provisioning and application onboarding dependency
+APDD configuration for 5 AD groups,"Additional configuration, coordination and validation effort"
+"Snyk, Sonar, JUnit & Code Coverage",Security/code-quality findings required remediation and re-validation
+Java upgrade using Code Transformer / Renovate / CodeBot,"Additional code remediation, compatibility checks and regression testing"
+Spring upgrade,Application changes and regression testing beyond containerization
+Helm structure & containerization templates,Application-specific template development and deployment troubleshooting
+Embedded Tomcat template upgrades (v1/v2),Runtime compatibility changes and multiple validation cycles
+POC / quality-gate validation,Additional testing and rework before production readiness
+Overall application-specific remediation,"Scope evolved from containerization to containerization + modernization + security/compliance, increasing effort and dependencies"
