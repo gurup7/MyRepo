@@ -1,0 +1,18 @@
+Source Technology Stack,Target Technology Stack,Effort Estimate,Depends On (Prerequisite),Execution Mode
+Phase 0: Foundation (test suite + 157 JAR audit + AMA deployment fixes),Test coverage + resolved dependencies,3-4 sprints (6-8 wks),None,Sequential - START FIRST
+WebLogic 14,IBM WebSphere Liberty,3-4 sprints (6-8 wks),"Spring, Java 21, Hibernate complete",Sequential
+Java 11/17,Java 21,2-3 sprints (4-6 wks),Phase 0 (dependency audit),Sequential (aligned with Hibernate/Spring)
+EJB 2.0 - Stateless Session Beans (javax.ejb),Jakarta EE 10 EJB on Liberty (No JPA rewrite),1-2 sprints (2-4 wks),javax to jakarta namespace,Sequential (with Liberty phase)
+EJB 2.0 - Message Driven Beans (javax.jms),Spring (jmslistener) + IBM MQ,2-3 sprints (4-6 wks),namespace done; MQ provisioned,Sequential (code) + Parallel (MQ infra)
+Hibernate 5.4.31,Hibernate 7.x (via 5->6->7),5-7 sprints (10-14 wks),"Phase 0, javax to jakarta",Sequential - CRITICAL PATH
+Spring 5.3.46,Spring Framework 6.x/7.x,3-4 sprints (6-8 wks),Hibernate 7 complete,Sequential
+Weblogic JMS (14 MDBs),Liberty,Included in MDB row,-,-
+Angular 19,Angular 21,1-2 sprints (2-4 wks),None (separate team),Parallel
+Javax.* namespace,Jakarta.* namespace,1-2 sprints (2-4 wks),Phase 0,Sequential (blocks Hibernate 6+)
+CORBA/RMI-IIOP,REST/gRPC or direct injection,2-3 sprints (4-6 wks),Phase 0,Parallel
+OHS Web Server,Apache,1 sprint (2 wks),None,Parallel
+NDM on VM,No change,0,None,Parallel (infra config only)
+DB Links,No change,0,None,Parallel (no work)
+Autosys Jobs,Autosys/OpenShift Jobs,2-3 sprints (4-6 wks),App containerized (final wiring),Parallel (analysis) then Sequential (final wiring)
+Containerization + Helm + CI/CD + UAT/PROD/Hypercare,OpenShift deployment,4-6 sprints (8-12 wks),Liberty deployment ready,Sequential - LAST
+Platform Prep (namespace / Vault / CyberArk / SSL / MQ),Provisioned platform services,Ongoing (external),External approvals,Parallel - START IMMEDIATELY
