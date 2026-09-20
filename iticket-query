@@ -1,0 +1,6 @@
+WebLogic Analysis Report in html format(which is the 3rd report) - Vinod
+How the messaging engine on WebLogic is currently being used?. Does iTicket use WebLogic's built-in JMS Server?. If possible, please share the WebLogic JMS configurations. 
+Are there any Foreign JMS Servers configured in WebLogic
+How mdb messages are being consumed?. who produces these messages(internal or external systems) 
+Pls share the configuration of WebLogic messaging engine on JVM
+Whether OHS web servers are in DMZ?. As the nginx and weblogic are collocated then what would be the role of both OHS and nginx
