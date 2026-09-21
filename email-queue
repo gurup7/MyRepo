@@ -1,0 +1,29 @@
+Hi [Chief Architect's Name],
+
+Following your challenge on the IBM MQ recommendation, I investigated the actual WebLogic JMS configuration with the client app team. The findings materially change the messaging design, and I want to align with you before we finalize.
+
+Summary: IBM MQ is not the right blanket solution. The picture is now much clearer and narrower.
+
+Key findings from the client:
+
+The messaging scope is smaller than "14 MDBs" suggested. Of 15 queues: 6 are unused/legacy/test (eliminate), 3 are internal-only, 1 is actually a direct EJB call to RCP (not a queue), 2 use APPIA's own connector, and only 4 are genuine external integrations (TPS2/IPO, eBlotter/ERMS, TPS2/RSFS, GTM).
+
+The internal queues can move to Liberty's native messaging — confirming your point that we don't need IBM MQ across the board.
+
+The 4 external systems are NOT migrating off WebLogic. Their queues physically live on the external systems' own WebLogic JMS providers (TPS2 cluster, eBlotter host, commserv cluster). iTicket only defines local aliases (foreign destinations) pointing at them — iTicket does not own these queues.
+
+These external flows connect via WebLogic's T3S protocol, which Liberty cannot speak. Since the partners are staying on WebLogic JMS, we need a bridge/adapter to maintain connectivity. Importantly, the client confirmed these flows have no strict SLA and can tolerate slight latency, which makes a bridge/adapter pattern viable rather than requiring a high-performance broker.
+
+Revised design direction:
+
+Queue Group	Count	Target
+Unused/legacy/test	6	Eliminate
+Internal-only	3	Liberty native messaging
+Direct EJB call (RCP)	1	Keep as synchronous call
+APPIA-connected	2	APPIA's own connector (pending confirmation)
+External (WebLogic JMS via T3S)	4	Bridge/adapter to partners' WebLogic JMS
+Open item: The exact mechanism to maintain T3S connectivity to the partner WebLogic queues from Liberty is pending input from the IBM team. This is the one remaining design decision.
+
+Net effect: This reduces both the risk and effort of the messaging migration. IBM MQ is not required for the bulk of the queues; the only open question is the bridge mechanism for the 4 external flows, and the lack of SLA constraints gives us flexibility there.
+
+I've captured the full queue-by-queue disposition in a supporting document. Happy to walk through it whenever convenient.
