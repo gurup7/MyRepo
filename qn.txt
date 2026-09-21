@@ -1,0 +1,4 @@
+"For the 4 external systems (TPS2, eBlotter/ERMS, GTM) — are they also migrating off WebLogic? If so, what messaging platform will they move to?" ← the single most important question
+"The foreign queues connect via WebLogic T3S protocol. Since Liberty cannot speak T3S, what is the plan for these 4 connections after migration — a shared enterprise broker, or a bridge?"
+"Who owns the foreign queues (EDT_IPO_FOREIGN_QUEUE, EDT_EBL_FOREIGN_QUEUE, DIRECT_STP_FOREIGN_QUEUE, gtmedtreadqueue) — iTicket or the external system? Where do they physically reside?"
+"Are these 4 flows real-time critical, or can they tolerate a bridge/adapter with slight latency?"
