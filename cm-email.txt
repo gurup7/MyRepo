@@ -1,0 +1,11 @@
+Following your point on Uniform Distributed Destinations (UDD), we confirmed the JMS configuration. The UDD finding is the deciding factor for the messaging design, and I'm summarizing it here with clear options for your decision.
+
+UDD Findings (Confirmed)
+Native/local EDT queues ARE Uniform Distributed Destinations — created via createUniformDistributedQueue(...), clustered across eDTJMSServer1/eDTJMSServer2, and backed by WebLogic File Store (persistent).
+Foreign queues are NOT UDDs — created via createForeignDestination(...) as local JNDI aliases pointing to queues that physically reside on the external systems; distribution there belongs to the remote provider, not EDT.
+Why UDD Is the Deciding Consideration
+The internal EDT queues carry two enterprise characteristics that the target must preserve:
+
+Distributed (UDD) — one logical queue spread across cluster members for HA and load balancing.
+Persistent (File Store) — messages must survive restart.
+In a containerized, multi-pod deployment, this matters because Liberty's embedded messaging is a per-server engine and does not natively replicate a clustered distributed destination across pods. A naive "one embedded queue per pod" approach would break the single-logical-queue/multiple-members semantics and risk message imbalance or loss. In short, UDD + persistence is the constraint that drives the messaging platform choice.
