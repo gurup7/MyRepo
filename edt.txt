@@ -1,0 +1,172 @@
+Key Discussion Points
+1. Current Messaging Architecture - WebLogic JMS
+
+    Internal Setup:
+        Two WebLogic JMS servers (EDJMS Server 1 & Server 2)
+        Each backed by WebLogic persistent file store
+        Two nodes: EDT Node 1 & Node 2
+        Internal queues use Universal Distributed Destinations (UDD)
+        UDD provides clustering and load balancing across cluster members
+
+    Message Consumption:
+        14 Message-Driven Beans (MDBs) configured
+        5 queues identified as unused and can be eliminated
+        3 internal EDT queues with distributed and persistent features
+        1 direct EJB call to RCB (not queue-based)
+        2 queues use API's own connector
+
+    External Integrations:
+        4 external integrations via T3S protocol connecting to:
+            TPS to E-Blotter
+            TPS to E-Dealer
+            TPS to RSFS
+            GTM
+
+2. Critical Issue: T3S Protocol Limitation
+
+The Core Problem:
+
+    Liberty does not natively support T3S protocol (WebLogic proprietary RMI protocol)
+    T3S is implemented entirely within Oracle WebLogic runtime and client JARs
+    IBM has no license to implement Oracle's proprietary wire protocol
+
+Bidirectional Connectivity Concern:
+
+    External systems (E-Blotter, E-Dealer) are also WebLogic-based but operate outside the EDT domain
+    Current setup uses T3S for bidirectional communication (both sending and receiving messages)
+    If external systems have EDT queues defined as "foreign queues" on their side, they cannot connect via T3S to Liberty
+
+3. Foreign vs. Local Queues Configuration
+Aspect
+	
+Internal Queues
+	
+Foreign Queues
+Type
+	
+Local queues on EDT
+	
+Remote queues on external systems
+Technology
+	
+UDD (Uniform Distributed Destination)
+	
+Foreign queue references
+Connection
+	
+WebLogic file store persistence
+	
+T3S protocol
+Clustering
+	
+Supported
+	
+Per-server basis
+ 
+  
+ 
+Action Items
+CRITICAL - Must Complete Before Proceeding:
+
+     
+
+    Stakeholder Discussion - IMMEDIATE PRIORITY (Owner: Guruprakash Subbarao)
+        Schedule discussion with application stakeholders and external system owners (TPS2, E-Blotter teams)
+        Present the following restrictions and constraints:
+            EDT migration to Liberty (non-WebLogic container)
+            Liberty does not support UDD (federated queue replication)
+            Liberty does not support T3S protocol natively
+        Key Question to External Teams: "What changes are required on your side if EDT migrates to an external messaging engine (MQ or Solace) instead of WebLogic JMS? Can your applications connect via standard JMS instead of T3S?"
+     
+
+    Verify Bidirectional Queue Dependencies (Owner: Guruprakash Subbarao / Subhash Kumar)
+        Confirm whether EDT's local queues are defined as "foreign queues" on external systems
+        Determine if external systems are initiating connections to EDT queues
+        Document the direction of message flow for each integration:
+            EDTlocal queue → external foreign queue (one-way)
+            external system → EDT queue (two-way)
+     
+
+    Obtain Written Confirmation from External Partners (Owner: Guruprakash Subbarao)
+        Confirm that all four external integrations are hosted on WebLogic servers
+        Verify specific names and versions of external systems
+        Document their willingness/capability to support alternative messaging protocols
+
+Secondary Actions - Hold Until #1 Completed:
+
+     
+
+    Evaluate Messaging Engine Options (Owner: Rahul Gupta / Rajesh Raghupati) - On Hold
+        Options: IBM MQ or Solace (or equivalent JMS-compliant engine)
+        Do NOT proceed with bridge/adapter development
+        Reason: Custom bridges cannot adequately address JMS protocol complexity (quality of service, retry mechanisms, non-functional requirements)
+     
+
+    Document Architecture Alternatives (Owner: Guruprakash Subbarao)
+        Option A: Separate JMS pod running Liberty with JMS feature enabled
+            All application pods connect as JMS clients
+            Similar to traditional WebLogic/WebSphere architecture
+        Option B: External managed messaging service (MQ/Solace)
+        Only pursue after external system discussions conclude
+
+Technical Research - Deferred:
+
+     Do NOT Pursue: Bridge/Adapter Development
+        Creating custom T3S-to-Liberty bridge is not recommended
+        Rationale: Cannot guarantee protocol compliance, quality of service, retry logic, or non-functional requirements
+        Similar past challenges with Manish's WebSphere federated caching - had to migrate to external Redis
+
+Issues & Blockers
+Issue
+	
+Severity
+	
+Status
+T3S Protocol not supported in Liberty
+	
+CRITICAL
+	
+Unresolved
+Bidirectional connectivity to external systems unclear
+	
+CRITICAL
+	
+Pending investigation
+UDD (federated queues) not available in Liberty
+	
+HIGH
+	
+Architectural constraint
+5 unused queues identified
+	
+LOW
+	
+Can be eliminated
+Hibernate 5 to Hibernate 7 migration
+	
+MEDIUM
+	
+Separate track, can be handled
+ 
+  
+ 
+Decisions Made
+
+     Do NOT proceed with internal Liberty embedded messaging - Not suitable for clustering/persistence needs
+     Do NOT develop custom bridge adapters - Risk too high, non-functional requirements cannot be guaranteed
+     Escalate external system integration as first priority - Must resolve before any further development
+     Schedule follow-up call with application stakeholders - Tomorrow (September 25, 2026)
+
+Next Steps
+
+    Tomorrow: Call with stakeholders (SATYA SAHANI to organize)
+    Before Tomorrow: Prepare detailed analysis of local vs. foreign queue configuration
+    Parallel: Gather documentation on external system requirements and capabilities
+    Outcome Needed: Written agreement from external teams on messaging engine approach before resuming migration planning
+
+Risk Assessment
+
+Project Status: ⚠️ ON HOLD - Cannot proceed without resolution of T3S protocol limitation
+
+Key Risk: If external systems cannot or will not switch from T3S to standard JMS, the EDT Liberty migration may become a no-go application and move to backlog.
+    
